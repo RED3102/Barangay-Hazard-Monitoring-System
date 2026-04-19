@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Sidebar }                from "./components/Sidebar";
+import { User, LogOut }           from "lucide-react";
 import { Header }                 from "./components/Header";
 import { AdminLogin }             from "./components/AdminLogin";
 import { HazardStatusCard }       from "./components/HazardStatusCard";
