@@ -1,0 +1,6 @@
+hazard-system/node_modules/
+hazard-system/.env
+hazard-ai/__pycache__/
+hazard-ai/flood/__pycache__/
+hazard-ai/fire/__pycache__/
+hazard-ai/earthquake/__pycache__/
