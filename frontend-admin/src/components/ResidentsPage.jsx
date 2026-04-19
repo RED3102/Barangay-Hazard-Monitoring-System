@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const API_URL = "http://localhost:3000";
+const API_URL = "https://backend-production-f78d.up.railway.app";
 
 function getToken() {
   return localStorage.getItem("admin_token") || "";

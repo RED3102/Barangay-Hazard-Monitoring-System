@@ -13,7 +13,7 @@ import {
   RadioTower, ShieldAlert, ArrowUpRight, Users
 } from "lucide-react";
 
-const API_URL = "http://localhost:3000";
+const API_URL = "https://backend-production-f78d.up.railway.app";
 
 export default function App() {
   const [activeMenu, setActiveMenu]       = useState("dashboard");

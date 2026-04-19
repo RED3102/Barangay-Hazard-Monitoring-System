@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from "react";
 
-export const API_URL  = "http://localhost:3000";
+export const API_URL  = "https://backend-production-f78d.up.railway.app";
 const STALE_MS        = 5 * 60 * 1000;
 const POLL_MS         = 10000;
 
