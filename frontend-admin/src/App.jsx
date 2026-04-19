@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
-import { Sidebar } from "./components/Sidebar";
-import { Header } from "./components/Header";
-import { HazardStatusCard } from "./components/HazardStatusCard";
-import { SensorChart } from "./components/SensorChart";
-import { AIDetectionPanel } from "./components/AIDetectionPanel";
+import { Sidebar }                from "./components/Sidebar";
+import { Header }                 from "./components/Header";
+import { AdminLogin }             from "./components/AdminLogin";
+import { HazardStatusCard }       from "./components/HazardStatusCard";
+import { SensorChart }            from "./components/SensorChart";
+import { AIDetectionPanel }       from "./components/AIDetectionPanel";
 import { AlertVerificationPanel } from "./components/AlertVerificationPanel";
-import { AlertsFeed } from "./components/AlertsFeed";
-import { ActivityLogPage } from "./components/ActivityLogPage";
-import { ResidentsPage } from "./components/ResidentsPage";
+import { AlertsFeed }             from "./components/AlertsFeed";
+import { ActivityLogPage }        from "./components/ActivityLogPage";
+import { ResidentsPage }          from "./components/ResidentsPage";
 import {
   Droplets, Flame, Activity, Bell,
   RadioTower, ShieldAlert, ArrowUpRight, Users
@@ -15,17 +16,50 @@ import {
 
 const API_URL = "https://backend-production-f78d.up.railway.app";
 
+function parseJwt(token) {
+  try { return JSON.parse(atob(token.split(".")[1])); } catch { return null; }
+}
+
+function isTokenValid(token) {
+  if (!token) return false;
+  const payload = parseJwt(token);
+  return payload ? payload.exp * 1000 > Date.now() : false;
+}
+
 export default function App() {
-  const [activeMenu, setActiveMenu]       = useState("dashboard");
-  const [dashboard, setDashboard]         = useState(null);
-  const [sensorHistory, setSensorHistory] = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [activityLog, setActivityLog]     = useState([]);
+  const [activeMenu,      setActiveMenu]      = useState("dashboard");
+  const [dashboard,       setDashboard]       = useState(null);
+  const [sensorHistory,   setSensorHistory]   = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [activityLog,     setActivityLog]     = useState([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [adminUser,       setAdminUser]       = useState(null);
+
+  // Restore session on mount
+  useEffect(() => {
+    const token = localStorage.getItem("admin_token");
+    if (isTokenValid(token)) {
+      const payload = parseJwt(token);
+      setAdminUser({ name: payload.name || "Barangay Official" });
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handleLogin = (user) => {
+    setAdminUser(user);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("admin_token");
+    setIsAuthenticated(false);
+    setAdminUser(null);
+  };
 
   const addLogEntry = (alert, action) => {
     const entry = {
       id:         Date.now(),
-      action,                          // "approved" | "declined"
+      action,
       hazardType: alert.hazard_type,
       severity:   alert.severity,
       nodeId:     alert.node_id,
@@ -60,6 +94,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchDashboard();
     fetchHistory();
     const interval = setInterval(() => {
@@ -67,9 +102,9 @@ export default function App() {
       fetchHistory();
     }, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
 
-  // ── Chart data ───────────────────────────────────────────────────────────
+  // Chart data
   const waterData = sensorHistory.map((r) => ({
     time:  new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     value: r.water,
@@ -83,25 +118,22 @@ export default function App() {
     value: r.vib ?? r.vibration ?? 0,
   }));
 
-  // ── Derived state ────────────────────────────────────────────────────────
-  const STALE_MS     = 5 * 60 * 1000;
-  const latest       = dashboard?.latest_reading;
-  const activeAlerts = dashboard?.active_alerts || [];
+  // Derived state
+  const STALE_MS      = 5 * 60 * 1000;
+  const latest        = dashboard?.latest_reading;
+  const activeAlerts  = dashboard?.active_alerts || [];
   const currentHazard = activeAlerts[0] || null;
 
-  // Per-node latest readings derived from history
   const latestByNode = {};
-  sensorHistory.forEach((r) => { latestByNode[r.node_id] = r; }); // last write wins
+  sensorHistory.forEach((r) => { latestByNode[r.node_id] = r; });
 
   const floodLatest      = latestByNode["flood_node"];
   const fireLatest       = latestByNode["fire_node"];
   const earthquakeLatest = latestByNode["earthquake_node"];
 
-  const isNodeStale = (nodeReading) =>
-    !nodeReading ||
-    (Date.now() - new Date(nodeReading.created_at).getTime()) > STALE_MS;
+  const isNodeStale = (n) =>
+    !n || (Date.now() - new Date(n.created_at).getTime()) > STALE_MS;
 
-  // Status derived from the correct node only
   const floodStatus = isNodeStale(floodLatest) ? "Safe"
     : (floodLatest.water > 500 || floodLatest.distance < 15 ? "Warning" : "Safe");
 
@@ -110,15 +142,19 @@ export default function App() {
 
   const earthquakeVib    = earthquakeLatest?.vibration ?? earthquakeLatest?.vib ?? 0;
   const earthquakeStatus = isNodeStale(earthquakeLatest) ? "Safe"
-  : (earthquakeVib >= 3.0 ? "Critical" : "Safe");
+    : (earthquakeVib >= 3.0 ? "Critical" : "Safe");
 
-  // How many of our 3 nodes have sent at least one reading
   const activeNodeIds = [...new Set(
-  sensorHistory
-    .filter(r => (Date.now() - new Date(r.created_at).getTime()) < STALE_MS)
-    .map(r => r.node_id)
+    sensorHistory
+      .filter(r => (Date.now() - new Date(r.created_at).getTime()) < STALE_MS)
+      .map(r => r.node_id)
   )];
   const nodesOnline = activeNodeIds.length;
+
+  // Show login page if not authenticated
+  if (!isAuthenticated) {
+    return <AdminLogin onLogin={handleLogin} />;
+  }
 
   if (loading) {
     return (
@@ -130,111 +166,71 @@ export default function App() {
 
   const renderContent = () => {
     switch (activeMenu) {
-
-      // ── Sensor Monitoring ──────────────────────────────────────────────
       case "sensor-monitoring":
         return (
           <div className="space-y-8">
             <section>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Sensor Data Monitoring
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Sensor Data Monitoring</h2>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <SensorChart
                   title="Water Level Sensor"
                   data={waterData.length > 0 ? waterData : [{ time: "now", value: floodLatest?.water || 0 }]}
-                  unit="meter"
-                  color="#2563eb"
+                  unit="meter" color="#2563eb"
                 />
                 <SensorChart
                   title="Fire Sensor"
                   data={smokeData.length > 0 ? smokeData : [{ time: "now", value: fireLatest?.smoke || 0 }]}
-                  unit="infrared radiation"
-                  color="#dc2626"
+                  unit="infrared radiation" color="#dc2626"
                 />
                 <SensorChart
                   title="Vibration Sensor"
-                  data={
-                    vibrationData.length > 0
-                      ? vibrationData
-                      : [{ time: "now", value: earthquakeLatest?.vib ?? earthquakeLatest?.vibration ?? 0 }]
-                  }
-                  unit="normalized (0–1)"
-                  color="#f59e0b"
+                  data={vibrationData.length > 0 ? vibrationData : [{ time: "now", value: earthquakeLatest?.vib ?? earthquakeLatest?.vibration ?? 0 }]}
+                  unit="normalized (0–5)" color="#f59e0b"
                 />
               </div>
             </section>
           </div>
         );
 
-      // ── Hazard Alerts ──────────────────────────────────────────────────
       case "hazard-alerts":
         return (
           <div className="space-y-8">
             <section>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Hazard Alerts &amp; Notifications
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Hazard Alerts &amp; Notifications</h2>
               <AlertsFeed />
             </section>
           </div>
         );
 
-      // ── Alert Verification ─────────────────────────────────────────────
       case "alert-verification": {
-        // Build hazard entries from real active alerts
         const hazardMap = { flood: null, fire: null, earthquake: null };
         activeAlerts.forEach((a) => {
           if (hazardMap[a.hazard_type] === null) hazardMap[a.hazard_type] = a;
         });
-
         const derivedHazards = [
-          {
-            hazardType: hazardMap.flood      ? "Flooding Detected"    : "No Flood Detected",
-            riskLevel:  hazardMap.flood      ? hazardMap.flood.severity      : "Low",
-            confidence: hazardMap.flood      ? 90 : 10,
-          },
-          {
-            hazardType: hazardMap.fire       ? "Fire Detected"        : "No Fire Detected",
-            riskLevel:  hazardMap.fire       ? hazardMap.fire.severity       : "Low",
-            confidence: hazardMap.fire       ? 90 : 10,
-          },
-          {
-            hazardType: hazardMap.earthquake ? "Earthquake Detected"  : "No Earthquake Detected",
-            riskLevel:  hazardMap.earthquake ? hazardMap.earthquake.severity : "Low",
-            confidence: hazardMap.earthquake ? 90 : 10,
-          },
+          { hazardType: hazardMap.flood      ? "Flooding Detected"   : "No Flood Detected",    riskLevel: hazardMap.flood      ? hazardMap.flood.severity      : "Low", confidence: hazardMap.flood      ? 90 : 10 },
+          { hazardType: hazardMap.fire       ? "Fire Detected"       : "No Fire Detected",      riskLevel: hazardMap.fire       ? hazardMap.fire.severity       : "Low", confidence: hazardMap.fire       ? 90 : 10 },
+          { hazardType: hazardMap.earthquake ? "Earthquake Detected" : "No Earthquake Detected",riskLevel: hazardMap.earthquake ? hazardMap.earthquake.severity : "Low", confidence: hazardMap.earthquake ? 90 : 10 },
         ];
-
         return (
           <div className="space-y-8">
             <section>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                AI Detection and Alert Verification
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">AI Detection and Alert Verification</h2>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <AIDetectionPanel
-                  hazards={derivedHazards}
-                  lastUpdated={latest?.created_at}
-                />
-                <AlertVerificationPanel
-                  alerts={activeAlerts}
-                  onRefresh={fetchDashboard}
-                  onLogActivity={addLogEntry}
-                />
+                <AIDetectionPanel hazards={derivedHazards} lastUpdated={latest?.created_at} />
+                <AlertVerificationPanel alerts={activeAlerts} onRefresh={fetchDashboard} onLogActivity={addLogEntry} />
               </div>
             </section>
           </div>
         );
       }
 
-      // ── Activity Logs ──────────────────────────────────────────────────
       case "activity-logs":
         return <ActivityLogPage activityLog={activityLog} />;
-      // ── Residents ──────────────────────────────────────────────
-      case "residents": 
+
+      case "residents":
         return <ResidentsPage />;
-      // ── Placeholder pages ──────────────────────────────────────────────
+
       case "reports-analytics":
       case "system-settings":
         return (
@@ -246,12 +242,10 @@ export default function App() {
           </div>
         );
 
-      // ── Dashboard (default) ────────────────────────────────────────────
       case "dashboard":
       default:
         return (
           <div className="space-y-6">
-            {/* Page heading */}
             <div className="flex items-center justify-between mb-8">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 tracking-tight">System Overview</h1>
@@ -271,18 +265,14 @@ export default function App() {
               </div>
             </div>
 
-            {/* ── Stat cards ── */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Active Alerts */}
               <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="text-sm font-medium text-gray-500">Active Alerts</p>
                     <h3 className="text-3xl font-bold text-gray-900 mt-1">{activeAlerts.length}</h3>
                   </div>
-                  <div className="bg-red-50 p-2.5 rounded-xl text-red-600">
-                    <ShieldAlert size={20} />
-                  </div>
+                  <div className="bg-red-50 p-2.5 rounded-xl text-red-600"><ShieldAlert size={20} /></div>
                 </div>
                 <div className="mt-4 flex items-center text-sm">
                   <ArrowUpRight size={16} className="text-red-500 mr-1" />
@@ -291,16 +281,13 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Nodes Online */}
               <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="text-sm font-medium text-gray-500">Nodes Online</p>
                     <h3 className="text-3xl font-bold text-gray-900 mt-1">{nodesOnline} / 3</h3>
                   </div>
-                  <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600">
-                    <RadioTower size={20} />
-                  </div>
+                  <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600"><RadioTower size={20} /></div>
                 </div>
                 <div className="mt-4 flex items-center text-sm">
                   <span className="text-emerald-600 font-medium font-mono text-xs">
@@ -309,16 +296,13 @@ export default function App() {
                 </div>
               </div>
 
-              {/* High Risk Zones */}
               <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="text-sm font-medium text-gray-500">High Risk Zones</p>
                     <h3 className="text-3xl font-bold text-gray-900 mt-1">{activeAlerts.length}</h3>
                   </div>
-                  <div className="bg-amber-50 p-2.5 rounded-xl text-amber-600">
-                    <Users size={20} />
-                  </div>
+                  <div className="bg-amber-50 p-2.5 rounded-xl text-amber-600"><Users size={20} /></div>
                 </div>
                 <div className="mt-4 flex items-center text-sm">
                   <span className="text-amber-600 font-medium">
@@ -330,52 +314,24 @@ export default function App() {
               </div>
             </div>
 
-            {/* ── Main content grid ── */}
             <div className="mt-6">
               <div className="w-full bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
                 <div className="p-5 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
                   <h3 className="font-semibold text-gray-900">Current Hazard Levels</h3>
-                  <button
-                    onClick={() => setActiveMenu("sensor-monitoring")}
-                    className="text-sm text-blue-600 font-medium hover:text-blue-700 transition-colors"
-                  >
+                  <button onClick={() => setActiveMenu("sensor-monitoring")} className="text-sm text-blue-600 font-medium hover:text-blue-700 transition-colors">
                     View All Sensors
                   </button>
                 </div>
                 <div className="p-5 flex-1 bg-gradient-to-b from-white to-gray-50/30">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
-                    <HazardStatusCard
-                      title="Flood Risk"
-                      status={floodStatus}
-                      icon={Droplets}
-                      lastUpdate={floodLatest?.created_at
-                        ? new Date(floodLatest.created_at).toLocaleTimeString()
-                        : "No data"}
-                    />
-                    <HazardStatusCard
-                      title="Fire Detection"
-                      status={fireStatus}
-                      icon={Flame}
-                      lastUpdate={fireLatest?.created_at
-                        ? new Date(fireLatest.created_at).toLocaleTimeString()
-                        : "No data"}
-                    />
-                    <HazardStatusCard
-                      title="Earthquake"
-                      status={earthquakeStatus}
-                      icon={Activity}
-                      lastUpdate={earthquakeLatest?.created_at
-                        ? new Date(earthquakeLatest.created_at).toLocaleTimeString()
-                        : "No data"}
-                    />
+                    <HazardStatusCard title="Flood Risk"     status={floodStatus}      icon={Droplets} lastUpdate={floodLatest?.created_at      ? new Date(floodLatest.created_at).toLocaleTimeString()      : "No data"} />
+                    <HazardStatusCard title="Fire Detection" status={fireStatus}       icon={Flame}    lastUpdate={fireLatest?.created_at       ? new Date(fireLatest.created_at).toLocaleTimeString()       : "No data"} />
+                    <HazardStatusCard title="Earthquake"     status={earthquakeStatus} icon={Activity} lastUpdate={earthquakeLatest?.created_at ? new Date(earthquakeLatest.created_at).toLocaleTimeString() : "No data"} />
                   </div>
 
-                  {/* Active hazard notice */}
                   {currentHazard && (
                     <div className="mt-6 p-4 rounded-xl bg-blue-50/50 border border-blue-100 flex items-start gap-4">
-                      <div className="bg-blue-100 p-2.5 rounded-full text-blue-600 shrink-0">
-                        <Bell size={18} />
-                      </div>
+                      <div className="bg-blue-100 p-2.5 rounded-full text-blue-600 shrink-0"><Bell size={18} /></div>
                       <div>
                         <h4 className="text-sm font-semibold text-blue-900 capitalize">
                           {currentHazard.hazard_type} Alert — Action Required
@@ -389,12 +345,8 @@ export default function App() {
                     </div>
                   )}
                 </div>
-
                 <div className="p-4 flex justify-center items-center border-t border-gray-50">
-                  <button
-                    onClick={() => setActiveMenu("alert-verification")}
-                    className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors"
-                  >
+                  <button onClick={() => setActiveMenu("alert-verification")} className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors">
                     View All Notifications <ArrowUpRight size={16} />
                   </button>
                 </div>
@@ -407,9 +359,9 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-gray-50 font-sans">
-      <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} />
+      <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} onLogout={handleLogout} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
+        <Header user={adminUser} onLogout={handleLogout} />
         <main className="flex-1 overflow-y-auto p-8">
           <div className="w-full h-full">
             {renderContent()}
