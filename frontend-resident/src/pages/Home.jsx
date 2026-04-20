@@ -73,25 +73,6 @@ export function Home() {
         </div>
       </div>
 
-      {/* Inline SOS — always visible at top */}
-      <div className="px-6 -mt-6 mb-6 relative z-20">
-        <motion.button
-          whileTap={{ scale: 0.95 }}
-          className="w-full bg-red-600 rounded-3xl p-5 shadow-lg shadow-red-600/30 flex items-center justify-between border-[3px] border-white active:bg-red-700 transition-colors"
-          onClick={() => console.log("SOS Activated!")}
-        >
-          <div>
-            <h2 className="text-white font-bold text-lg mb-1 flex items-center gap-2">
-              <ShieldAlert size={20} />
-              Emergency SOS
-            </h2>
-            <p className="text-red-100 text-xs font-medium text-left">Tap to alert authorities</p>
-          </div>
-          <div className="bg-white/20 p-3 rounded-full">
-            <ArrowUpRight className="text-white" size={24} />
-          </div>
-        </motion.button>
-      </div>
 
       {/* Hazard Status Cards */}
       <div className="px-6 space-y-4 relative z-10">
