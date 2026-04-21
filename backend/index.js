@@ -136,13 +136,13 @@ app.post('/api/readings', async (req, res) => {
   let classifyBody = {};
 
   if (node === 'flood_node') {
-    classifyUrl  = 'http://localhost:5000/classify/flood';
+    classifyUrl = 'https://hazard-ai-production.up.railway.app/classify/flood';
     classifyBody = { water, distance };
   } else if (node === 'fire_node') {
-    classifyUrl  = 'http://localhost:5000/classify/fire';
+    classifyUrl = 'https://hazard-ai-production.up.railway.app/classify/fire';
     classifyBody = { smoke, temperature };
   } else if (node === 'earthquake_node') {
-    classifyUrl  = 'http://localhost:5000/classify/earthquake';
+    classifyUrl = 'https://hazard-ai-production.up.railway.app/classify/earthquake';
     classifyBody = { vibration: vib };
   }
 
