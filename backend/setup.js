@@ -5,10 +5,11 @@ function runSetup() {
   return new Promise((resolve, reject) => {
     // Connect WITHOUT specifying a database so we can create it if needed
     const connection = mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
+      host:     process.env.DB_HOST,
+      port:     parseInt(process.env.DB_PORT, 10) || 3306,
+      user:     process.env.DB_USER,
       password: process.env.DB_PASSWORD,
-    });
+      });
 
     connection.connect((err) => {
       if (err) {
@@ -73,14 +74,36 @@ function runSetup() {
               `;
 
               connection.query(createAlerts, (err) => {
-                connection.end();
                 if (err) {
                   console.error('Setup: failed to create alerts table:', err.message);
+                  connection.end();
                   return reject(err);
                 }
                 console.log('Setup: alerts table is ready');
-                console.log('Setup: database initialisation complete');
-                resolve();
+
+                // 5. Create residents table
+                const createResidents = `
+                  CREATE TABLE IF NOT EXISTS residents (
+                    id            INT AUTO_INCREMENT PRIMARY KEY,
+                    full_name     VARCHAR(255) NOT NULL,
+                    phone         VARCHAR(20)  NOT NULL UNIQUE,
+                    address       VARCHAR(255) NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    status        ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                  )
+                `;
+
+                connection.query(createResidents, (err) => {
+                  connection.end();
+                  if (err) {
+                    console.error('Setup: failed to create residents table:', err.message);
+                    return reject(err);
+                  }
+                  console.log('Setup: residents table is ready');
+                  console.log('Setup: database initialisation complete');
+                  resolve();
+                });
               });
             });
           });
@@ -91,3 +114,5 @@ function runSetup() {
 }
 
 module.exports = runSetup;
+
+runSetup().catch(console.error);
