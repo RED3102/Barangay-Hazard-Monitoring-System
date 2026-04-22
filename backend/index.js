@@ -1,6 +1,8 @@
 const express = require('express');
-const db = require('./db');
-const app = express();
+const path    = require('path');
+const multer  = require('multer');
+const db      = require('./db');
+const app     = express();
 require('dotenv').config();
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const cors = require('cors');
@@ -8,6 +10,18 @@ const cors = require('cors');
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// Multer setup for photo uploads
+// ---------------------------------------------------------------------------
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
+  filename:    (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+});
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10 MB
+
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ---------------------------------------------------------------------------
 // Threshold-based hazard detection (fallback when AI classifier is offline)
@@ -246,6 +260,60 @@ app.get('/api/dashboard', async (req, res) => {
       active_alerts:  alerts,
       alert_count:    alerts.length,
     });
+  } catch (err) {
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Resident hazard reports (with optional photo)
+// ---------------------------------------------------------------------------
+
+// Submit a new report
+app.post('/api/reports', upload.single('photo'), async (req, res) => {
+  const { hazard_type, location, description, source } = req.body;
+
+  if (!hazard_type || !location) {
+    return res.status(400).json({ status: 'error', message: 'hazard_type and location are required' });
+  }
+
+  const photo_url = req.file ? `/uploads/${req.file.filename}` : null;
+
+  const sql = `INSERT INTO reports (hazard_type, location, description, photo_url, source)
+               VALUES (?, ?, ?, ?, ?)`;
+  try {
+    const [result] = await db.query(sql, [
+      hazard_type,
+      location,
+      description || null,
+      photo_url,
+      source || 'resident_report',
+    ]);
+    console.log('Report created, ID:', result.insertId);
+    res.status(201).json({ status: 'ok', id: result.insertId, photo_url });
+  } catch (err) {
+    console.error('Report insert error:', err.message);
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// Get all reports
+app.get('/api/reports', async (req, res) => {
+  try {
+    const [results] = await db.query('SELECT * FROM reports ORDER BY created_at DESC');
+    res.json(results);
+  } catch (err) {
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// Update report status
+app.patch('/api/reports/:id', async (req, res) => {
+  const { status } = req.body;
+  const { id } = req.params;
+  try {
+    await db.query('UPDATE reports SET status = ? WHERE id = ?', [status, id]);
+    res.json({ status: 'ok', message: `Report ${id} updated to ${status}` });
   } catch (err) {
     return res.status(500).json({ status: 'error', message: err.message });
   }

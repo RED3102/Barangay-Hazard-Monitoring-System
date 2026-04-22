@@ -1,13 +1,11 @@
-import { useState } from "react";
-import { Bell, Camera, X, Plus, Send } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Bell, Camera, X, Plus, Send, RefreshCw } from "lucide-react";
+
+const API_URL = "https://backend-production-f78d.up.railway.app";
 
 export function AlertsFeed() {
-  const [notifications, setNotifications] = useState([
-    { id: 1, text: "Flood warning issued for Zone 3", description: "Water levels rising rapidly near the main bridge.", time: "2 min ago", type: "warning", image: "/Img/SalitranIII.jpg" },
-    { id: 2, text: "Fire detected near designated hazard zone", description: "", time: "15 min ago", type: "info", image: "/images/fire.jpg" },
-    { id: 3, text: "System maintenance completed", description: "All sensors are now online and calibrated.", time: "1 hour ago", type: "success" },
-  ]);
-
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [showReportForm, setShowReportForm] = useState(false);
   const [formData, setFormData] = useState({
@@ -17,33 +15,100 @@ export function AlertsFeed() {
     hazardType: "",
   });
 
+  // Fetch real alerts + reports from backend
+  const fetchNotifications = async () => {
+    try {
+      const [alertsRes, reportsRes] = await Promise.all([
+        fetch(`${API_URL}/api/alerts`),
+        fetch(`${API_URL}/api/reports`),
+      ]);
+
+      const [alertsData, reportsData] = await Promise.all([
+        alertsRes.json(),
+        reportsRes.json(),
+      ]);
+
+      // Transform sensor alerts into notification format
+      const alertNotifs = (Array.isArray(alertsData) ? alertsData : []).map((a) => ({
+        id: `alert-${a.id}`,
+        text: `[${a.hazard_type.charAt(0).toUpperCase() + a.hazard_type.slice(1)}] ${a.hazard_type} alert from ${a.node_id}`,
+        description: `Severity: ${a.severity} — Status: ${a.status}`,
+        time: a.created_at,
+        type: a.severity === "critical" ? "warning" : a.severity === "high" ? "warning" : "info",
+        image: null,
+        source: "sensor",
+        status: a.status,
+      }));
+
+      // Transform resident reports into notification format
+      const reportNotifs = (Array.isArray(reportsData) ? reportsData : []).map((r) => ({
+        id: `report-${r.id}`,
+        text: `[${r.hazard_type.charAt(0).toUpperCase() + r.hazard_type.slice(1)}] Resident report — ${r.location}`,
+        description: r.description || "No description provided.",
+        time: r.created_at,
+        type: r.hazard_type === "fire" ? "warning" : r.hazard_type === "flood" ? "info" : "warning",
+        image: r.photo_url ? `${API_URL}${r.photo_url}` : null,
+        source: "resident",
+        status: r.status,
+      }));
+
+      // Merge & sort by time (newest first)
+      const merged = [...alertNotifs, ...reportNotifs].sort(
+        (a, b) => new Date(b.time) - new Date(a.time)
+      );
+
+      setNotifications(merged);
+    } catch (err) {
+      console.error("Failed to fetch notifications:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  function timeAgo(dateStr) {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins} min${mins > 1 ? "s" : ""} ago`;
+    if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+    return `${days} day${days > 1 ? "s" : ""} ago`;
+  }
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const submitReport = (e) => {
+  const submitReport = async (e) => {
     e.preventDefault();
     if (!formData.hazardName.trim() || !formData.hazardType || !formData.riskLevel) return;
 
-    const typeMap = {
-      fire: "warning",
-      flood: "info",
-      earthquake: "warning",
-    };
+    try {
+      const res = await fetch(`${API_URL}/api/alerts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          node: "admin_manual",
+          hazard_type: formData.hazardType,
+          severity: formData.riskLevel.toLowerCase(),
+        }),
+      });
 
-    setNotifications([
-      {
-        id: Date.now(),
-        text: `[${formData.hazardType.charAt(0).toUpperCase() + formData.hazardType.slice(1)}] ${formData.hazardName}`,
-        description: `${formData.description} — Risk Level: ${formData.riskLevel}`,
-        time: "Just now",
-        type: typeMap[formData.hazardType] || "warning",
-      },
-      ...notifications,
-    ]);
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
 
-    setFormData({ hazardName: "", description: "", riskLevel: "", hazardType: "" });
-    setShowReportForm(false);
+      setFormData({ hazardName: "", description: "", riskLevel: "", hazardType: "" });
+      setShowReportForm(false);
+      fetchNotifications(); // Refresh immediately
+    } catch (err) {
+      console.error("Failed to submit report:", err);
+    }
   };
 
   return (
@@ -53,13 +118,25 @@ export function AlertsFeed() {
         <div className="flex items-center gap-2">
           <Bell className="text-blue-600" size={20} />
           <h3 className="font-semibold text-gray-900">Notifications & Alerts Feed</h3>
+          <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md text-xs font-medium">
+            {notifications.length}
+          </span>
         </div>
-        <button
-          onClick={() => setShowReportForm(!showReportForm)}
-          className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors"
-        >
-          <Plus size={16} /> Report Hazard
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchNotifications}
+            className="bg-gray-50 text-gray-600 hover:bg-gray-100 p-1.5 rounded-lg transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw size={16} />
+          </button>
+          <button
+            onClick={() => setShowReportForm(!showReportForm)}
+            className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors"
+          >
+            <Plus size={16} /> Report Hazard
+          </button>
+        </div>
       </div>
 
       {/* Hazard Report Form */}
@@ -157,41 +234,76 @@ export function AlertsFeed() {
 
       {/* Feed */}
       <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-        {notifications.map((notif) => (
-          <div key={notif.id} className="flex gap-4 p-4 border border-gray-50 bg-white hover:bg-gray-50 hover:border-gray-100 rounded-xl transition-colors shadow-sm">
-            <div className={`w-2.5 h-2.5 mt-1.5 rounded-full flex-shrink-0 ${
-              notif.type === "warning" ? "bg-yellow-500" :
-              notif.type === "info" ? "bg-blue-500" : "bg-emerald-500"
-            }`} />
-            <div className="w-full">
-              <div className="flex justify-between items-start w-full">
-                <p className="text-sm font-bold text-gray-900">{notif.text}</p>
-                <span className="text-xs text-gray-400 font-medium whitespace-nowrap ml-2">{notif.time}</span>
-              </div>
-              {notif.description && (
-                <p className="text-sm text-gray-600 mt-1 leading-relaxed">{notif.description}</p>
-              )}
-              {notif.image && (
-                <div className="mt-3 relative group inline-block">
-                  <img
-                    src={notif.image}
-                    alt="Evidence"
-                    onClick={() => setLightboxSrc(notif.image)}
-                    className="w-16 h-12 object-cover rounded-lg border border-gray-200 cursor-pointer"
-                  />
-                  <img
-                    src={notif.image}
-                    alt=""
-                    className="absolute bottom-14 left-0 w-52 h-36 object-cover rounded-xl border border-gray-200 shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-10"
-                  />
-                  <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 w-fit px-2.5 py-1 rounded-md border border-blue-100">
-                    <Camera size={13} /> Photo evidence attached
-                  </div>
-                </div>
-              )}
-            </div>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12 text-gray-400 gap-2">
+            <RefreshCw size={24} className="animate-spin opacity-50" />
+            <p className="text-sm">Loading notifications…</p>
           </div>
-        ))}
+        ) : notifications.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-gray-400 gap-2">
+            <Bell size={32} className="opacity-30" />
+            <p className="text-sm">No notifications yet</p>
+          </div>
+        ) : (
+          notifications.map((notif) => (
+            <div key={notif.id} className="flex gap-4 p-4 border border-gray-50 bg-white hover:bg-gray-50 hover:border-gray-100 rounded-xl transition-colors shadow-sm">
+              <div className={`w-2.5 h-2.5 mt-1.5 rounded-full flex-shrink-0 ${
+                notif.type === "warning" ? "bg-yellow-500" :
+                notif.type === "info" ? "bg-blue-500" : "bg-emerald-500"
+              }`} />
+              <div className="w-full">
+                <div className="flex justify-between items-start w-full">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-gray-900">{notif.text}</p>
+                    {notif.source === "resident" && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-100">
+                        Report
+                      </span>
+                    )}
+                    {notif.source === "sensor" && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-600 border border-cyan-100">
+                        Sensor
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-400 font-medium whitespace-nowrap ml-2">{timeAgo(notif.time)}</span>
+                </div>
+                {notif.description && (
+                  <p className="text-sm text-gray-600 mt-1 leading-relaxed">{notif.description}</p>
+                )}
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                    notif.status === "pending"
+                      ? "bg-yellow-50 text-yellow-600 border border-yellow-100"
+                      : notif.status === "verified" || notif.status === "reviewed"
+                        ? "bg-green-50 text-green-600 border border-green-100"
+                        : "bg-gray-100 text-gray-400 border border-gray-200"
+                  }`}>
+                    {notif.status}
+                  </span>
+                </div>
+                {notif.image && (
+                  <div className="mt-3 relative group inline-block">
+                    <img
+                      src={notif.image}
+                      alt="Evidence"
+                      onClick={() => setLightboxSrc(notif.image)}
+                      className="w-16 h-12 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                    />
+                    <img
+                      src={notif.image}
+                      alt=""
+                      className="absolute bottom-14 left-0 w-52 h-36 object-cover rounded-xl border border-gray-200 shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-10"
+                    />
+                    <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 w-fit px-2.5 py-1 rounded-md border border-blue-100">
+                      <Camera size={13} /> Photo evidence attached
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Lightbox */}

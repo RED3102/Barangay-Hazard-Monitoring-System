@@ -95,14 +95,37 @@ function runSetup() {
                 `;
 
                 connection.query(createResidents, (err) => {
-                  connection.end();
                   if (err) {
                     console.error('Setup: failed to create residents table:', err.message);
+                    connection.end();
                     return reject(err);
                   }
                   console.log('Setup: residents table is ready');
-                  console.log('Setup: database initialisation complete');
-                  resolve();
+
+                  // 6. Create reports table
+                  const createReports = `
+                    CREATE TABLE IF NOT EXISTS reports (
+                      id          INT AUTO_INCREMENT PRIMARY KEY,
+                      hazard_type VARCHAR(100)  NOT NULL,
+                      location    VARCHAR(255)  NOT NULL,
+                      description TEXT,
+                      photo_url   VARCHAR(500)  DEFAULT NULL,
+                      source      VARCHAR(50)   DEFAULT 'resident_report',
+                      status      ENUM('pending','reviewed','dismissed') NOT NULL DEFAULT 'pending',
+                      created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+                    )
+                  `;
+
+                  connection.query(createReports, (err) => {
+                    connection.end();
+                    if (err) {
+                      console.error('Setup: failed to create reports table:', err.message);
+                      return reject(err);
+                    }
+                    console.log('Setup: reports table is ready');
+                    console.log('Setup: database initialisation complete');
+                    resolve();
+                  });
                 });
               });
             });

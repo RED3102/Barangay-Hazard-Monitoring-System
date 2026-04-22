@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AlertCircle, Check, X } from "lucide-react";
 
-const API_URL = "http://localhost:3000";
+const API_URL = "https://backend-production-f78d.up.railway.app";
 
 const HAZARD_STYLES = {
   flood:      { levelBg: "bg-blue-50",   levelColor: "text-blue-600"   },

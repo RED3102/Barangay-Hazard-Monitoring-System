@@ -33,23 +33,31 @@ export function Report() {
     setErrorMsg("");
 
     try {
-      const body = {
-        hazard_type: form.hazard_type,
-        location:    form.location.trim(),
-        description: form.description.trim(),
-        source:      "resident_report",
-      };
+      // Use FormData for multipart upload (supports photo file)
+      const body = new FormData();
+      body.append("hazard_type", form.hazard_type);
+      body.append("location", form.location.trim());
+      body.append("description", form.description.trim());
+      body.append("source", "resident_report");
+
+      // Attach photo if selected
+      if (form.photo) {
+        body.append("photo", form.photo);
+      }
 
       const res = await fetch(`${API_URL}/api/reports`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(body),
+        method: "POST",
+        // Do NOT set Content-Type — browser sets it automatically with the correct boundary for FormData
+        body,
       });
 
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
 
       setStatus("success");
       setForm(INITIAL_FORM);
+
+      // Reset file input
+      if (fileInputRef.current) fileInputRef.current.value = "";
 
       // Reset back to idle after 3 seconds
       setTimeout(() => setStatus("idle"), 3000);
