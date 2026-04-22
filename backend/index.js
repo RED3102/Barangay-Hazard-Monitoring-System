@@ -162,7 +162,8 @@ app.post('/api/readings', async (req, res) => {
 
   if (!classifyUrl) return;
 
-  // 4. Try AI classifier first; fall back to thresholds if it's unreachable
+  // 4. Try AI classifier first; fall back to thresholds if AI is unreachable
+  //    OR if AI says "normal" but thresholds disagree
   try {
     const aiRes    = await fetch(classifyUrl, {
       method:  'POST',
@@ -176,9 +177,17 @@ app.post('/api/readings', async (req, res) => {
     console.log('AI classification:', aiResult.hazard);
 
     if (aiResult.hazard && aiResult.hazard !== 'normal') {
+      // AI detected a hazard — create alert from AI result
       const severity = aiResult.severity ||
         (aiResult.hazard === 'earthquake' ? 'critical' : 'high');
       await createAlertIfNotDuplicate(node, aiResult.hazard, severity);
+    } else {
+      // AI said "normal" — still check thresholds as a safety net
+      const detected = detectHazardFromThresholds(node, req.body);
+      if (detected) {
+        console.log(`AI said normal, but thresholds triggered for ${node} — creating alert`);
+        await createAlertIfNotDuplicate(node, detected.hazard, detected.severity);
+      }
     }
 
   } catch (err) {
