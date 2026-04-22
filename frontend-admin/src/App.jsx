@@ -183,7 +183,7 @@ export default function App() {
                   unit="infrared radiation" color="#dc2626"
                 />
                 <SensorChart
-                  title="Vibration Sensor"
+                  title="Earthquake Sensor"
                   data={vibrationData.length > 0 ? vibrationData : [{ time: "now", value: earthquakeLatest?.vib ?? earthquakeLatest?.vibration ?? 0 }]}
                   unit="normalized (0–5)" color="#f59e0b"
                 />
