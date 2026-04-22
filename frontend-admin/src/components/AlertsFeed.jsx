@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Bell, Camera, X, Plus, Send, RefreshCw } from "lucide-react";
 
-const API_URL = "https://backend-production-f78d.up.railway.app";
+import { API_URL } from "../config";
 
 export function AlertsFeed() {
   const [notifications, setNotifications] = useState([]);
@@ -91,9 +91,13 @@ export function AlertsFeed() {
     if (!formData.hazardName.trim() || !formData.hazardType || !formData.riskLevel) return;
 
     try {
+      const token = localStorage.getItem("admin_token");
       const res = await fetch(`${API_URL}/api/alerts`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           node: "admin_manual",
           hazard_type: formData.hazardType,

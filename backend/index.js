@@ -1,6 +1,7 @@
 const express = require('express');
 const path    = require('path');
 const multer  = require('multer');
+const jwt     = require('jsonwebtoken');
 const db      = require('./db');
 const app     = express();
 require('dotenv').config();
@@ -8,8 +9,27 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 const cors = require('cors');
 
 app.use(cors());
-const PORT = process.env.PORT || 3000;
 app.use(express.json());
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || "change_this_in_production";
+
+// Middleware: verify admin JWT
+function adminAuth(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Admin token required." });
+  }
+  try {
+    const payload = jwt.verify(header.split(" ")[1], JWT_SECRET);
+    if (payload.role !== "admin") {
+      return res.status(403).json({ error: "Admin access only." });
+    }
+    req.admin = payload;
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid or expired token." });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Multer setup for photo uploads
@@ -217,8 +237,8 @@ app.get('/api/readings/history', async (req, res) => {
   }
 });
 
-// Create a new alert manually
-app.post('/api/alerts', async (req, res) => {
+// Create a new alert manually - Admin only
+app.post('/api/alerts', adminAuth, async (req, res) => {
   const { node, hazard_type, severity } = req.body;
   const sql = `INSERT INTO alerts 
     (node_id, hazard_type, severity, status) 
@@ -243,8 +263,8 @@ app.get('/api/alerts', async (req, res) => {
   }
 });
 
-// Update alert status (approve or dismiss)
-app.patch('/api/alerts/:id', async (req, res) => {
+// Update alert status (approve or dismiss) - Admin only
+app.patch('/api/alerts/:id', adminAuth, async (req, res) => {
   const { status } = req.body;
   const { id } = req.params;
   try {

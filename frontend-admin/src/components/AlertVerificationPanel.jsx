@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AlertCircle, Check, X } from "lucide-react";
 
-const API_URL = "https://backend-production-f78d.up.railway.app";
+import { API_URL } from "../config";
 
 const HAZARD_STYLES = {
   flood:      { levelBg: "bg-blue-50",   levelColor: "text-blue-600"   },
@@ -22,9 +22,13 @@ export function AlertVerificationPanel({ alerts = [], onRefresh, onLogActivity }
     setLoadingId(alert.id);
     setError(null);
     try {
+      const token = localStorage.getItem("admin_token");
       const res = await fetch(`${API_URL}/api/alerts/${alert.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);

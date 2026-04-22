@@ -14,7 +14,7 @@ import {
   RadioTower, ShieldAlert, ArrowUpRight, Users
 } from "lucide-react";
 
-const API_URL = "https://backend-production-f78d.up.railway.app";
+import { API_URL } from "./config";
 
 function parseJwt(token) {
   try { return JSON.parse(atob(token.split(".")[1])); } catch { return null; }
