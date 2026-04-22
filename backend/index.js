@@ -199,7 +199,7 @@ app.post('/api/readings', async (req, res) => {
 // Get sensor history for charts (last 20 readings)
 app.get('/api/readings/history', async (req, res) => {
   const sql = `SELECT * FROM sensor_readings 
-    ORDER BY created_at DESC LIMIT 20`;
+    ORDER BY created_at DESC LIMIT 60`;
   try {
     const [results] = await db.query(sql);
     res.json(results.reverse());

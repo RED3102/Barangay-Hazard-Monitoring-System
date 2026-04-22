@@ -104,19 +104,25 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isAuthenticated]);
 
-  // Chart data
-  const waterData = sensorHistory.map((r) => ({
-    time:  new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    value: r.water,
-  }));
-  const smokeData = sensorHistory.map((r) => ({
-    time:  new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    value: r.smoke,
-  }));
-  const vibrationData = sensorHistory.map((r) => ({
-    time:  new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    value: r.vib ?? r.vibration ?? 0,
-  }));
+  // Chart data — filter by node so each chart only shows its own sensor's readings
+  const waterData = sensorHistory
+    .filter((r) => r.node_id === "flood_node")
+    .map((r) => ({
+      time:  new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      value: r.water ?? 0,
+    }));
+  const smokeData = sensorHistory
+    .filter((r) => r.node_id === "fire_node")
+    .map((r) => ({
+      time:  new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      value: r.smoke ?? 0,
+    }));
+  const vibrationData = sensorHistory
+    .filter((r) => r.node_id === "earthquake_node")
+    .map((r) => ({
+      time:  new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      value: r.vib ?? r.vibration ?? 0,
+    }));
 
   // Derived state
   const STALE_MS      = 5 * 60 * 1000;
