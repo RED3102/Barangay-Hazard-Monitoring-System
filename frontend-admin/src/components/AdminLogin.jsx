@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, User, Lock, Eye, EyeOff } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const API_URL = "https://backend-production-f78d.up.railway.app";
+import { API_URL } from "../config";
 
 export function AdminLogin({ onLogin }) {
   const [form,    setForm]    = useState({ username: "", password: "" });
