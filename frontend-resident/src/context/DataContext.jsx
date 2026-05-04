@@ -48,7 +48,7 @@ export function DataProvider({ children }) {
   const isStale = !latest ||
     (Date.now() - new Date(latest.created_at).getTime()) > STALE_MS;
 
-  const floodStatus      = isStale ? "Safe" : (latest.water > 500 || latest.distance < 15 ? "Warning"  : "Safe");
+  const floodStatus      = isStale ? "Safe" : (latest.water > 30 || latest.distance < 15 ? "Warning"  : "Safe");
   const fireStatus       = isStale ? "Safe" : (latest.smoke > 100 || latest.temperature > 40 ? "Critical" : "Safe");
   const earthquakeStatus = isStale ? "Safe" : (latest.vibration >= 3 ? "Critical" : "Safe");
 

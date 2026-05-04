@@ -1,5 +1,6 @@
 import { LayoutDashboard, Radio, AlertTriangle, CheckSquare, ClipboardList, Users } from "lucide-react";
 import { SubdivisionMapPanel } from "./SubdivisionMapPanel";
+import { BarChart2 } from "lucide-react";
 
 export function Sidebar({ activeMenu, setActiveMenu }) {
   const menuItems = [
@@ -8,7 +9,8 @@ export function Sidebar({ activeMenu, setActiveMenu }) {
     { id: "hazard-alerts",      label: "Hazard Alerts",      icon: AlertTriangle },
     { id: "alert-verification", label: "Alert Verification", icon: CheckSquare },
     { id: "activity-logs",      label: "Activity Logs",      icon: ClipboardList },
-    { id: "residents",          label: "Residents",          icon: Users }
+    { id: "reports-analytics", label: "Reports & Analytics", icon: BarChart2 },
+    { id: "residents",          label: "Residents",          icon: Users } 
   ];
 
   return (

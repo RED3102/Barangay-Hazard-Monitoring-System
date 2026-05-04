@@ -8,6 +8,7 @@ import { AIDetectionPanel }       from "./components/AIDetectionPanel";
 import { AlertVerificationPanel } from "./components/AlertVerificationPanel";
 import { AlertsFeed }             from "./components/AlertsFeed";
 import { ActivityLogPage }        from "./components/ActivityLogPage";
+import { AnalyticsPage }          from "./components/AnalyticsPage";
 import { ResidentsPage }          from "./components/ResidentsPage";
 import {
   Droplets, Flame, Activity, Bell,
@@ -141,7 +142,7 @@ export default function App() {
     !n || (Date.now() - new Date(n.created_at).getTime()) > STALE_MS;
 
   const floodStatus = isNodeStale(floodLatest) ? "Safe"
-    : (floodLatest.water > 500 || floodLatest.distance < 15 ? "Warning" : "Safe");
+    : (floodLatest.water > 30 || floodLatest.distance < 15 ? "Warning" : "Safe");
 
   const fireStatus = isNodeStale(fireLatest) ? "Safe"
     : (fireLatest.smoke > 100 || fireLatest.temperature > 40 ? "Critical" : "Safe");
@@ -238,6 +239,7 @@ export default function App() {
         return <ResidentsPage />;
 
       case "reports-analytics":
+        return <AnalyticsPage />;
       case "system-settings":
         return (
           <div className="flex items-center justify-center h-full min-h-[400px]">

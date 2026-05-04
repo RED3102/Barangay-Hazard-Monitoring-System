@@ -50,7 +50,7 @@ function detectHazardFromThresholds(node, body) {
   const { water, smoke, distance, vib, temperature } = body;
 
   if (node === 'flood_node') {
-    if (water > 500 || distance < 15) return { hazard: 'flood', severity: 'high' };
+    if (water > 30 || distance < 15) return { hazard: 'flood', severity: 'high' };
   }
 
   if (node === 'fire_node') {
@@ -345,6 +345,114 @@ app.patch('/api/reports/:id', async (req, res) => {
     res.json({ status: 'ok', message: `Report ${id} updated to ${status}` });
   } catch (err) {
     return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+// ---------------------------------------------------------------------------
+// ANALYTICS ENDPOINTS — add these before app.listen() in index.js
+// ---------------------------------------------------------------------------
+
+// GET /api/analytics/summary
+// Returns monthly hazard counts, most frequent hazard, and trend data
+app.get('/api/analytics/summary', adminAuth, async (req, res) => {
+  try {
+    // Monthly alert counts per hazard type (last 6 months)
+    const [monthly] = await db.query(`
+      SELECT
+        DATE_FORMAT(created_at, '%Y-%m') AS month,
+        hazard_type,
+        COUNT(*) AS count
+      FROM alerts
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY month, hazard_type
+      ORDER BY month ASC
+    `);
+
+    // Total counts per hazard type (all time)
+    const [totals] = await db.query(`
+      SELECT hazard_type, COUNT(*) AS count
+      FROM alerts
+      GROUP BY hazard_type
+      ORDER BY count DESC
+    `);
+
+    // Most active node
+    const [nodeActivity] = await db.query(`
+      SELECT node_id, COUNT(*) AS count
+      FROM alerts
+      GROUP BY node_id
+      ORDER BY count DESC
+      LIMIT 1
+    `);
+
+    // Alert status breakdown
+    const [statusBreakdown] = await db.query(`
+      SELECT status, COUNT(*) AS count
+      FROM alerts
+      GROUP BY status
+    `);
+
+    // Peak hour — which hour of day has most alerts
+    const [peakHours] = await db.query(`
+      SELECT HOUR(created_at) AS hour, COUNT(*) AS count
+      FROM alerts
+      GROUP BY hour
+      ORDER BY count DESC
+      LIMIT 5
+    `);
+
+    // Recent 30 days daily count for trend line
+    const [dailyTrend] = await db.query(`
+      SELECT
+        DATE(created_at) AS date,
+        COUNT(*) AS count
+      FROM alerts
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+      GROUP BY date
+      ORDER BY date ASC
+    `);
+
+    res.json({
+      monthly,
+      totals,
+      nodeActivity:    nodeActivity[0] || null,
+      statusBreakdown,
+      peakHours,
+      dailyTrend,
+    });
+  } catch (err) {
+    console.error('Analytics error:', err.message);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// GET /api/analytics/prediction
+// Simple frequency-based prediction for next month
+app.get('/api/analytics/prediction', adminAuth, async (req, res) => {
+  try {
+    // Get alert counts per hazard type per month for last 3 months
+    const [rows] = await db.query(`
+      SELECT
+        hazard_type,
+        DATE_FORMAT(created_at, '%Y-%m') AS month,
+        COUNT(*) AS count
+      FROM alerts
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+      GROUP BY hazard_type, month
+      ORDER BY hazard_type, month ASC
+    `);
+
+    // Get this month's current counts
+    const [currentMonth] = await db.query(`
+      SELECT hazard_type, COUNT(*) AS count
+      FROM alerts
+      WHERE DATE_FORMAT(created_at, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')
+      GROUP BY hazard_type
+    `);
+
+    res.json({ rows, currentMonth });
+  } catch (err) {
+    console.error('Prediction error:', err.message);
+    res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
