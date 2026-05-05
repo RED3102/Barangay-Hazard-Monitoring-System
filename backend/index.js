@@ -398,6 +398,75 @@ app.delete('/api/node-profiles/:node_id', adminAuth, async (req, res) => {
     res.status(500).json({ error: 'Server error.' });
   }
 });
+app.get('/api/analytics/summary', adminAuth, async (req, res) => {
+  try {
+    const [monthly] = await db.query(`
+      SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, hazard_type, COUNT(*) AS count
+      FROM alerts
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY month, hazard_type
+      ORDER BY month ASC
+    `);
+    const [totals] = await db.query(`
+      SELECT hazard_type, COUNT(*) AS count
+      FROM alerts
+      GROUP BY hazard_type
+      ORDER BY count DESC
+    `);
+    const [nodeActivity] = await db.query(`
+      SELECT node_id, COUNT(*) AS count
+      FROM alerts
+      GROUP BY node_id
+      ORDER BY count DESC
+      LIMIT 1
+    `);
+    const [statusBreakdown] = await db.query(`
+      SELECT status, COUNT(*) AS count
+      FROM alerts
+      GROUP BY status
+    `);
+    const [peakHours] = await db.query(`
+      SELECT HOUR(created_at) AS hour, COUNT(*) AS count
+      FROM alerts
+      GROUP BY hour
+      ORDER BY count DESC
+      LIMIT 5
+    `);
+    const [dailyTrend] = await db.query(`
+      SELECT DATE(created_at) AS date, COUNT(*) AS count
+      FROM alerts
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+      GROUP BY date
+      ORDER BY date ASC
+    `);
+    res.json({ monthly, totals, nodeActivity: nodeActivity[0] || null, statusBreakdown, peakHours, dailyTrend });
+  } catch (err) {
+    console.error('Analytics error:', err.message);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+app.get('/api/analytics/prediction', adminAuth, async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT hazard_type, DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS count
+      FROM alerts
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+      GROUP BY hazard_type, month
+      ORDER BY hazard_type, month ASC
+    `);
+    const [currentMonth] = await db.query(`
+      SELECT hazard_type, COUNT(*) AS count
+      FROM alerts
+      WHERE DATE_FORMAT(created_at, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')
+      GROUP BY hazard_type
+    `);
+    res.json({ rows, currentMonth });
+  } catch (err) {
+    console.error('Prediction error:', err.message);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
