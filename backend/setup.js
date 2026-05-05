@@ -53,7 +53,7 @@ function runSetup() {
                 node_id     VARCHAR(100)  NOT NULL,
                 hazard_type VARCHAR(100)  NOT NULL,
                 severity    VARCHAR(50)   NOT NULL,
-                status      VARCHAR(50)   DEFAULT 'pending',
+                status      VARCHAR(50)   DEFAULT 'active',
                 created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
               )
             `;

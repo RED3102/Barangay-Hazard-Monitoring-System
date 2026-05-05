@@ -1,126 +1,133 @@
-import { useState } from "react";
-import { AlertCircle, Check, X } from "lucide-react";
-
+import { useState, useEffect } from "react";
+import { CheckCircle, Clock, RefreshCw, Flame, Droplets, Activity, Bell } from "lucide-react";
 import { API_URL } from "../config";
 
+function getToken() {
+  return localStorage.getItem("admin_token") || "";
+}
+
+function authHeaders() {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${getToken()}`,
+  };
+}
+
+function timeAgo(dateStr) {
+  const diff  = Date.now() - new Date(dateStr).getTime();
+  const mins  = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  if (mins  < 1)  return "Just now";
+  if (mins  < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(diff / 86400000)}d ago`;
+}
+
 const HAZARD_STYLES = {
-  flood:      { levelBg: "bg-blue-50",   levelColor: "text-blue-600"   },
-  fire:       { levelBg: "bg-red-50",    levelColor: "text-red-600"    },
-  earthquake: { levelBg: "bg-orange-50", levelColor: "text-orange-600" },
+  flood:      { Icon: Droplets, color: "text-blue-600",   bg: "bg-blue-50",   border: "border-blue-200"   },
+  fire:       { Icon: Flame,    color: "text-red-600",    bg: "bg-red-50",    border: "border-red-200"    },
+  earthquake: { Icon: Activity, color: "text-amber-600",  bg: "bg-amber-50",  border: "border-amber-200"  },
 };
 
-const SEVERITY_STYLES = {
-  critical: { levelBg: "bg-red-50",    levelColor: "text-red-500"    },
-  high:     { levelBg: "bg-yellow-50", levelColor: "text-yellow-600" },
-};
+export function AlertVerificationPanel({ alerts, onRefresh, onLogActivity }) {
+  const [responding, setResponding] = useState(null);
 
-export function AlertVerificationPanel({ alerts = [], onRefresh, onLogActivity }) {
-  const [loadingId, setLoadingId] = useState(null);
-  const [error, setError]         = useState(null);
+  const activeAlerts = alerts.filter(a => a.status === "active" || a.status === "pending");
 
-  async function handleAction(alert, status) {
-    setLoadingId(alert.id);
-    setError(null);
+  const handleResponded = async (alert) => {
+    setResponding(alert.id);
     try {
-      const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/alerts/${alert.id}`, {
-        method: "PATCH",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ status }),
+      await fetch(`${API_URL}/api/alerts/${alert.id}`, {
+        method:  "PATCH",
+        headers: authHeaders(),
+        body:    JSON.stringify({ status: "responded" }),
       });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
-      // Log to activity feed: approved alerts show in log; declined are silently removed
-      if (onLogActivity) {
-        onLogActivity(alert, status === "verified" ? "approved" : "declined");
-      }
-      if (onRefresh) onRefresh();
+      onLogActivity?.(alert, "responded");
+      onRefresh?.();
     } catch (err) {
-      setError(`Failed to update alert: ${err.message}`);
+      console.error("Failed to update alert:", err);
     } finally {
-      setLoadingId(null);
+      setResponding(null);
     }
-  }
+  };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex flex-col h-full">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="p-5 border-b border-gray-50 bg-gray-50/50 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <AlertCircle className="text-blue-600" size={20} />
+          <Bell size={18} className="text-gray-600" />
           <h3 className="font-semibold text-gray-900">Alert Verification</h3>
         </div>
-        <span className="bg-red-50 text-red-500 px-2.5 py-1 rounded-md text-xs font-medium">
-          {alerts.length} Pending
-        </span>
+        <div className="flex items-center gap-3">
+          <span className={`text-xs font-bold px-2 py-1 rounded-full
+            ${activeAlerts.length > 0
+              ? "bg-red-50 text-red-600 border border-red-100"
+              : "bg-gray-100 text-gray-400"}`}>
+            {activeAlerts.length} Active
+          </span>
+          <button
+            onClick={onRefresh}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <RefreshCw size={15} />
+          </button>
+        </div>
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-100">
-          {error}
-        </div>
-      )}
-
       {/* Alert list */}
-      <div className="space-y-4 flex-1 overflow-y-auto pr-1">
-        {alerts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12 gap-2">
-            <AlertCircle size={32} className="opacity-30" />
-            <p className="text-sm">No pending alerts</p>
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[420px]">
+        {activeAlerts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+            <CheckCircle size={32} className="opacity-30 mb-3" />
+            <p className="text-sm font-medium">No pending alerts</p>
+            <p className="text-xs mt-1">All hazards have been responded to</p>
           </div>
         ) : (
-          alerts.map((alert) => {
-            const hazardStyle   = HAZARD_STYLES[alert.hazard_type]  || HAZARD_STYLES.flood;
-            const severityStyle = SEVERITY_STYLES[alert.severity]   || SEVERITY_STYLES.high;
-            const isLoading     = loadingId === alert.id;
+          activeAlerts.map(alert => {
+            const style = HAZARD_STYLES[alert.hazard_type] || HAZARD_STYLES.flood;
+            const { Icon, color, bg, border } = style;
+            const isResponding = responding === alert.id;
 
             return (
-              <div key={alert.id} className="border border-gray-100 rounded-xl p-4">
-                {/* Alert meta */}
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h4 className="font-medium text-gray-900 capitalize">
-                      {alert.hazard_type} Alert
-                    </h4>
-                    <p className="text-sm text-gray-500 font-mono">{alert.node_id}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {new Date(alert.created_at).toLocaleString("en-PH", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
-                    </p>
+              <div
+                key={alert.id}
+                className={`rounded-xl p-4 border ${border} ${bg} relative overflow-hidden`}
+              >
+                <div className="flex gap-3">
+                  <div className={`${color} p-2 rounded-xl bg-white/60 flex-shrink-0 h-fit`}>
+                    <Icon size={18} />
                   </div>
-                  <div className="flex flex-col items-end gap-1.5">
-                    <span className={`${hazardStyle.levelBg} ${hazardStyle.levelColor} px-2 py-0.5 rounded text-xs font-medium capitalize`}>
-                      {alert.hazard_type}
-                    </span>
-                    <span className={`${severityStyle.levelBg} ${severityStyle.levelColor} px-2 py-0.5 rounded text-xs font-medium capitalize`}>
-                      {alert.severity}
-                    </span>
-                  </div>
-                </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <h4 className={`text-sm font-bold capitalize ${color}`}>
+                        {alert.hazard_type} Alert
+                      </h4>
+                      <div className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0">
+                        <Clock size={11} />
+                        {timeAgo(alert.created_at)}
+                      </div>
+                    </div>
 
-                {/* Action buttons */}
-                <div className="flex gap-3 mt-3">
-                  <button
-                    disabled={isLoading}
-                  onClick={() => handleAction(alert, "verified")}
-                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <Check size={16} />
-                    {isLoading ? "Updating…" : "Approve"}
-                  </button>
-                  <button
-                    disabled={isLoading}
-                    onClick={() => handleAction(alert, "dismissed")}
-                    className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <X size={16} />
-                    {isLoading ? "Updating…" : "Reject"}
-                  </button>
+                    <p className="text-xs text-gray-600 mb-1">
+                      Node: <span className="font-mono font-medium">{alert.node_id}</span>
+                    </p>
+                    <p className="text-xs text-gray-600 mb-3">
+                      Severity: <span className="font-semibold capitalize">{alert.severity}</span>
+                    </p>
+
+                    <button
+                      onClick={() => handleResponded(alert)}
+                      disabled={isResponding}
+                      className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold transition-colors
+                        ${isResponding
+                          ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                          : "bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50"}`}
+                    >
+                      <CheckCircle size={15} />
+                      {isResponding ? "Updating…" : "Mark as Responded"}
+                    </button>
+                  </div>
                 </div>
               </div>
             );

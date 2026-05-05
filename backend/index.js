@@ -69,25 +69,21 @@ function detectHazardFromThresholds(node, body) {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Create alert only if no pending alert exists for that node+hazard already
-// (prevents duplicate alerts flooding the dashboard on every reading)
-// ---------------------------------------------------------------------------
 async function createAlertIfNotDuplicate(node, hazard, severity) {
   const checkSql = `
     SELECT id FROM alerts
-    WHERE node_id = ? AND hazard_type = ? AND status = 'pending'
+    WHERE node_id = ? AND hazard_type = ? AND status = 'active'
     LIMIT 1
   `;
   const [existing] = await db.query(checkSql, [node, hazard]);
   if (existing.length > 0) {
-    console.log(`Duplicate pending alert skipped for ${node} / ${hazard}`);
+    console.log(`Duplicate active alert skipped for ${node} / ${hazard}`);
     return;
   }
-
+ 
   const insertSql = `
     INSERT INTO alerts (node_id, hazard_type, severity, status)
-    VALUES (?, ?, ?, 'pending')
+    VALUES (?, ?, ?, 'active')
   `;
   await db.query(insertSql, [node, hazard, severity]);
   console.log(`Alert created: ${node} / ${hazard} / ${severity}`);
@@ -278,7 +274,7 @@ app.patch('/api/alerts/:id', adminAuth, async (req, res) => {
 // Dashboard — latest reading + active alerts
 app.get('/api/dashboard', async (req, res) => {
   const latestReading = `SELECT * FROM sensor_readings ORDER BY created_at DESC LIMIT 1`;
-  const activeAlerts  = `SELECT * FROM alerts WHERE status = 'pending' ORDER BY created_at DESC`;
+  const activeAlerts = `SELECT * FROM alerts WHERE status = 'active' ...`
   try {
     const [[readings], [alerts]] = await Promise.all([
       db.query(latestReading),
