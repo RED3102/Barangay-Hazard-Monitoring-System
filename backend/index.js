@@ -53,7 +53,7 @@ function detectHazardFromThresholds(node, body) {
     if (water > 30 || distance < 15) return { hazard: 'flood', severity: 'high' };
   }
 
-  if (node === 'fire_node') {
+  if (node === 'fire_node' || node.startsWith('fire_node_')) {
     const hotTemp = temperature > 40;   // above max normal outdoor heat index
     const highSmoke = smoke > 100;
 
@@ -172,7 +172,7 @@ app.post('/api/readings', async (req, res) => {
   if (node === 'flood_node') {
     classifyUrl = 'https://hazard-ai-production.up.railway.app/classify/flood';
     classifyBody = { water, distance };
-  } else if (node === 'fire_node') {
+  } else if (node === 'fire_node' || node.startsWith('fire_node_')) {
     classifyUrl = 'https://hazard-ai-production.up.railway.app/classify/fire';
     classifyBody = { smoke, temperature };
   } else if (node === 'earthquake_node') {
@@ -348,111 +348,54 @@ app.patch('/api/reports/:id', async (req, res) => {
   }
 });
 // ---------------------------------------------------------------------------
-// ANALYTICS ENDPOINTS — add these before app.listen() in index.js
+// NODE PROFILES — add to index.js before app.listen()
+// Allows admin to label fire nodes with owner name and address
 // ---------------------------------------------------------------------------
 
-// GET /api/analytics/summary
-// Returns monthly hazard counts, most frequent hazard, and trend data
-app.get('/api/analytics/summary', adminAuth, async (req, res) => {
+// GET /api/node-profiles — get all registered node profiles
+app.get('/api/node-profiles', adminAuth, async (req, res) => {
   try {
-    // Monthly alert counts per hazard type (last 6 months)
-    const [monthly] = await db.query(`
-      SELECT
-        DATE_FORMAT(created_at, '%Y-%m') AS month,
-        hazard_type,
-        COUNT(*) AS count
-      FROM alerts
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-      GROUP BY month, hazard_type
-      ORDER BY month ASC
-    `);
-
-    // Total counts per hazard type (all time)
-    const [totals] = await db.query(`
-      SELECT hazard_type, COUNT(*) AS count
-      FROM alerts
-      GROUP BY hazard_type
-      ORDER BY count DESC
-    `);
-
-    // Most active node
-    const [nodeActivity] = await db.query(`
-      SELECT node_id, COUNT(*) AS count
-      FROM alerts
-      GROUP BY node_id
-      ORDER BY count DESC
-      LIMIT 1
-    `);
-
-    // Alert status breakdown
-    const [statusBreakdown] = await db.query(`
-      SELECT status, COUNT(*) AS count
-      FROM alerts
-      GROUP BY status
-    `);
-
-    // Peak hour — which hour of day has most alerts
-    const [peakHours] = await db.query(`
-      SELECT HOUR(created_at) AS hour, COUNT(*) AS count
-      FROM alerts
-      GROUP BY hour
-      ORDER BY count DESC
-      LIMIT 5
-    `);
-
-    // Recent 30 days daily count for trend line
-    const [dailyTrend] = await db.query(`
-      SELECT
-        DATE(created_at) AS date,
-        COUNT(*) AS count
-      FROM alerts
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-      GROUP BY date
-      ORDER BY date ASC
-    `);
-
-    res.json({
-      monthly,
-      totals,
-      nodeActivity:    nodeActivity[0] || null,
-      statusBreakdown,
-      peakHours,
-      dailyTrend,
-    });
+    const [rows] = await db.query(
+      'SELECT * FROM node_profiles ORDER BY created_at DESC'
+    );
+    res.json(rows);
   } catch (err) {
-    console.error('Analytics error:', err.message);
-    res.status(500).json({ status: 'error', message: err.message });
+    console.error('Node profiles fetch error:', err.message);
+    res.status(500).json({ error: 'Server error.' });
   }
 });
 
-// GET /api/analytics/prediction
-// Simple frequency-based prediction for next month
-app.get('/api/analytics/prediction', adminAuth, async (req, res) => {
+// POST /api/node-profiles — register or update a fire node profile
+app.post('/api/node-profiles', adminAuth, async (req, res) => {
+  const { node_id, owner_name, address, node_type } = req.body;
+  if (!node_id || !owner_name || !address) {
+    return res.status(400).json({ error: 'node_id, owner_name, and address are required.' });
+  }
   try {
-    // Get alert counts per hazard type per month for last 3 months
-    const [rows] = await db.query(`
-      SELECT
-        hazard_type,
-        DATE_FORMAT(created_at, '%Y-%m') AS month,
-        COUNT(*) AS count
-      FROM alerts
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
-      GROUP BY hazard_type, month
-      ORDER BY hazard_type, month ASC
-    `);
-
-    // Get this month's current counts
-    const [currentMonth] = await db.query(`
-      SELECT hazard_type, COUNT(*) AS count
-      FROM alerts
-      WHERE DATE_FORMAT(created_at, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')
-      GROUP BY hazard_type
-    `);
-
-    res.json({ rows, currentMonth });
+    // Upsert — update if exists, insert if not
+    await db.query(`
+      INSERT INTO node_profiles (node_id, owner_name, address, node_type)
+      VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        owner_name = VALUES(owner_name),
+        address    = VALUES(address),
+        node_type  = VALUES(node_type)
+    `, [node_id, owner_name, address, node_type || 'fire']);
+    res.status(201).json({ message: 'Node profile saved.' });
   } catch (err) {
-    console.error('Prediction error:', err.message);
-    res.status(500).json({ status: 'error', message: err.message });
+    console.error('Node profile save error:', err.message);
+    res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+// DELETE /api/node-profiles/:node_id — remove a node profile
+app.delete('/api/node-profiles/:node_id', adminAuth, async (req, res) => {
+  try {
+    await db.query('DELETE FROM node_profiles WHERE node_id = ?', [req.params.node_id]);
+    res.json({ message: 'Node profile deleted.' });
+  } catch (err) {
+    console.error('Node profile delete error:', err.message);
+    res.status(500).json({ error: 'Server error.' });
   }
 });
 

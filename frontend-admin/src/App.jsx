@@ -3,6 +3,7 @@ import { Sidebar }                from "./components/Sidebar";
 import { Header }                 from "./components/Header";
 import { AdminLogin }             from "./components/AdminLogin";
 import { HazardStatusCard }       from "./components/HazardStatusCard";
+import { FireNodesPanel }         from "./components/FireNodesPanel";
 import { SensorChart }            from "./components/SensorChart";
 import { AIDetectionPanel }       from "./components/AIDetectionPanel";
 import { AlertVerificationPanel } from "./components/AlertVerificationPanel";
@@ -333,7 +334,10 @@ export default function App() {
                 <div className="p-5 flex-1 bg-gradient-to-b from-white to-gray-50/30">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
                     <HazardStatusCard title="Flood Risk"     status={floodStatus}      icon={Droplets} lastUpdate={floodLatest?.created_at      ? new Date(floodLatest.created_at).toLocaleTimeString()      : "No data"} />
-                    <HazardStatusCard title="Fire Detection" status={fireStatus}       icon={Flame}    lastUpdate={fireLatest?.created_at       ? new Date(fireLatest.created_at).toLocaleTimeString()       : "No data"} />
+                    <FireNodesPanel
+                        sensorHistory={sensorHistory}
+                        activeAlerts={activeAlerts}
+                    />
                     <HazardStatusCard title="Earthquake"     status={earthquakeStatus} icon={Activity} lastUpdate={earthquakeLatest?.created_at ? new Date(earthquakeLatest.created_at).toLocaleTimeString() : "No data"} />
                   </div>
 
