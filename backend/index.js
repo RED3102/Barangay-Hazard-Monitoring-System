@@ -274,7 +274,7 @@ app.patch('/api/alerts/:id', adminAuth, async (req, res) => {
 // Dashboard — latest reading + active alerts
 app.get('/api/dashboard', async (req, res) => {
   const latestReading = `SELECT * FROM sensor_readings ORDER BY created_at DESC LIMIT 1`;
-  const activeAlerts = `SELECT * FROM alerts WHERE status = 'active' ...`
+  const activeAlerts = `SELECT * FROM alerts WHERE status = 'active' ORDER BY created_at DESC`;
   try {
     const [[readings], [alerts]] = await Promise.all([
       db.query(latestReading),
