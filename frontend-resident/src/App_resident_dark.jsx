@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
 import { MobileFrame }   from "./components/MobileFrame";
-import { BottomNav }     from "./components/BottomNav";
+import { BottomNav }     from "./components/BottomNav_dark";
 import { DataProvider }  from "./context/DataContext";
 import { AlertBanner }   from "./components/AlertBanner";
 import { useDarkMode }   from "./hooks/useDarkMode";
-import { Home }          from "./pages/Home";
+import { Home }          from "./pages/Home_dark";
 import { Alerts }        from "./pages/Alerts";
 import { Report }        from "./pages/Report";
 import { Contacts }      from "./pages/Contacts";
-import { SignIn }        from "./pages/SignIn";
+import { SignIn }        from "./pages/SignIn_dark";
 import { Register }      from "./pages/Register";
 import { Profile }       from "./pages/Profile";
 import { Settings }      from "./pages/Settings";
