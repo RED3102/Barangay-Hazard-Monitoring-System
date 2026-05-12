@@ -10,10 +10,15 @@ const cors = require('cors');
 
 app.use(cors());
 app.use(express.json());
-const PORT = process.env.PORT || 3000;
+const PORT       = process.env.PORT       || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_in_production";
 
+// AI service URL — update this after deploying hazard-ai to Render
+const AI_URL = process.env.AI_URL || "https://YOUR-AI-SERVICE.onrender.com";
+
+// ---------------------------------------------------------------------------
 // Middleware: verify admin JWT
+// ---------------------------------------------------------------------------
 function adminAuth(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith("Bearer ")) {
@@ -38,13 +43,11 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
   filename:    (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10 MB
-
-// Serve uploaded files
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ---------------------------------------------------------------------------
-// Threshold-based hazard detection (fallback when AI classifier is offline)
+// Threshold-based hazard detection (fallback when AI is offline)
 // ---------------------------------------------------------------------------
 function detectHazardFromThresholds(node, body) {
   const { water, smoke, distance, vib, temperature } = body;
@@ -54,12 +57,11 @@ function detectHazardFromThresholds(node, body) {
   }
 
   if (node === 'fire_node' || node.startsWith('fire_node_')) {
-    const hotTemp = temperature > 40;   // above max normal outdoor heat index
+    const hotTemp   = temperature > 40;
     const highSmoke = smoke > 100;
-
-    if (temperature > 60 || smoke > 300)        return { hazard: 'fire', severity: 'critical' };
-    if ((hotTemp && highSmoke) || smoke > 100)  return { hazard: 'fire', severity: 'high' };
-    if (hotTemp)                                return { hazard: 'fire', severity: 'high' };
+    if (temperature > 60 || smoke > 300)       return { hazard: 'fire', severity: 'critical' };
+    if ((hotTemp && highSmoke) || smoke > 100) return { hazard: 'fire', severity: 'high' };
+    if (hotTemp)                               return { hazard: 'fire', severity: 'high' };
   }
 
   if (node === 'earthquake_node') {
@@ -69,23 +71,22 @@ function detectHazardFromThresholds(node, body) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Create alert only if no active alert exists for that node+hazard
+// ---------------------------------------------------------------------------
 async function createAlertIfNotDuplicate(node, hazard, severity) {
-  const checkSql = `
-    SELECT id FROM alerts
-    WHERE node_id = ? AND hazard_type = ? AND status = 'active'
-    LIMIT 1
-  `;
-  const [existing] = await db.query(checkSql, [node, hazard]);
+  const [existing] = await db.query(
+    `SELECT id FROM alerts WHERE node_id = ? AND hazard_type = ? AND status = 'active' LIMIT 1`,
+    [node, hazard]
+  );
   if (existing.length > 0) {
     console.log(`Duplicate active alert skipped for ${node} / ${hazard}`);
     return;
   }
- 
-  const insertSql = `
-    INSERT INTO alerts (node_id, hazard_type, severity, status)
-    VALUES (?, ?, ?, 'active')
-  `;
-  await db.query(insertSql, [node, hazard, severity]);
+  await db.query(
+    `INSERT INTO alerts (node_id, hazard_type, severity, status) VALUES (?, ?, ?, 'active')`,
+    [node, hazard, severity]
+  );
   console.log(`Alert created: ${node} / ${hazard} / ${severity}`);
 }
 
@@ -95,19 +96,12 @@ async function createAlertIfNotDuplicate(node, hazard, severity) {
 function isIoTDevice(req) {
   const deviceHeader = (req.headers['x-device'] || '').toLowerCase();
   const userAgent    = (req.headers['user-agent'] || '').toLowerCase();
-  const isIoTPath    = req.path === '/api/readings';
-
-  return (
-    deviceHeader === 'sim800l' ||
-    userAgent.includes('sim800l') ||
-    isIoTPath
-  );
+  return deviceHeader === 'sim800l' || userAgent.includes('sim800l') || req.path === '/api/readings';
 }
 
 app.use(express.json());
-
-  app.use("/api/auth",      require("./routes/auth"));
-  app.use("/api/residents", require("./routes/residents"));
+app.use("/api/auth",      require("./routes/auth"));
+app.use("/api/residents", require("./routes/residents"));
 
 // ---------------------------------------------------------------------------
 // HTTPS redirect middleware
@@ -115,19 +109,13 @@ app.use(express.json());
 app.use((req, res, next) => {
   const proto = req.headers['x-forwarded-proto'];
   const iot   = isIoTDevice(req);
-
   console.log(JSON.stringify({
-    ts:     new Date().toISOString(),
-    method: req.method,
-    path:   req.path,
-    proto:  proto || '(none)',
-    ua:     req.headers['user-agent'] || '(none)',
-    device: req.headers['x-device']  || '(none)',
-    iot,
+    ts: new Date().toISOString(), method: req.method, path: req.path,
+    proto: proto || '(none)', ua: req.headers['user-agent'] || '(none)',
+    device: req.headers['x-device'] || '(none)', iot,
   }));
-
-  if (iot)                          return next();
-  if (!proto || proto === 'https')  return next();
+  if (iot)                         return next();
+  if (!proto || proto === 'https') return next();
   return res.redirect(301, `https://${req.headers.host}${req.url}`);
 });
 
@@ -144,112 +132,123 @@ app.post('/api/readings', async (req, res) => {
   const { node, water, smoke, distance, vib, temperature } = req.body;
 
   // 1. Save reading
-  const sql = `INSERT INTO sensor_readings 
-    (node_id, water, smoke, distance, vibration, temperature) 
-    VALUES (?, ?, ?, ?, ?, ?)`;
-
   let result;
   try {
-    [result] = await db.query(sql, [node, water, smoke, distance, vib, temperature]);
+    [result] = await db.query(
+      `INSERT INTO sensor_readings (node_id, water, smoke, distance, vibration, temperature) VALUES (?, ?, ?, ?, ?, ?)`,
+      [node, water, smoke, distance, vib, temperature]
+    );
   } catch (err) {
     console.error('DB insert error:', err.message);
     return res.status(500).json({ status: 'error', message: err.message });
   }
-
   console.log('Reading saved, ID:', result.insertId);
 
-  // 2. Respond to ESP32 immediately so it isn't kept waiting
+  // 2. Respond to ESP32 immediately
   res.json({ status: 'ok', id: result.insertId });
 
-  // 3. Build AI classifier request
-  let classifyUrl  = '';
-  let classifyBody = {};
+  // 3. Build AI analysis request (classification + anomaly detection)
+  let analyzeUrl  = '';
+  let analyzeBody = {};
 
   if (node === 'flood_node') {
-    classifyUrl = 'https://hazard-ai-production.up.railway.app/classify/flood';
-    classifyBody = { water, distance };
+    analyzeUrl  = `${AI_URL}/analyze/flood`;
+    analyzeBody = { water, distance };
   } else if (node === 'fire_node' || node.startsWith('fire_node_')) {
-    classifyUrl = 'https://hazard-ai-production.up.railway.app/classify/fire';
-    classifyBody = { smoke, temperature };
+    analyzeUrl  = `${AI_URL}/analyze/fire`;
+    analyzeBody = { smoke, temperature };
   } else if (node === 'earthquake_node') {
-    classifyUrl = 'https://hazard-ai-production.up.railway.app/classify/earthquake';
-    classifyBody = { vibration: vib };
+    analyzeUrl  = `${AI_URL}/analyze/earthquake`;
+    analyzeBody = { vibration: vib };
   }
 
-  if (!classifyUrl) return;
+  if (!analyzeUrl) return;
 
-  // 4. Try AI classifier first; fall back to thresholds if AI is unreachable
-  //    OR if AI says "normal" but thresholds disagree
+  // 4. Try AI (classification + anomaly detection); fall back to thresholds if unavailable
   try {
-    const aiRes    = await fetch(classifyUrl, {
+    const aiRes    = await fetch(analyzeUrl, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(classifyBody),
-      // Abort if AI server doesn't respond within 5 s
+      body:    JSON.stringify(analyzeBody),
       signal:  AbortSignal.timeout(5000),
     });
 
     const aiResult = await aiRes.json();
-    console.log('AI classification:', aiResult.hazard);
+    console.log(`AI analysis for ${node}:`, aiResult);
+
+    // Save anomaly score back to the reading row
+    if (result?.insertId && aiResult.score !== undefined) {
+      await db.query(
+        'UPDATE sensor_readings SET anomaly_score = ?, anomaly_severity = ? WHERE id = ?',
+        [aiResult.score, aiResult.severity, result.insertId]
+      ).catch(err => console.warn('Anomaly score save skipped:', err.message));
+    }
 
     if (aiResult.hazard && aiResult.hazard !== 'normal') {
-      // AI detected a hazard — create alert from AI result
-      const severity = aiResult.severity ||
-        (aiResult.hazard === 'earthquake' ? 'critical' : 'high');
+      // AI classifier detected a hazard
+      const severity = aiResult.hazard === 'earthquake' ? 'critical' : 'high';
       await createAlertIfNotDuplicate(node, aiResult.hazard, severity);
+    } else if (aiResult.anomaly && aiResult.severity === 'anomalous') {
+      // Isolation Forest flagged anomaly even though classifier said normal
+      // This is a pre-hazard warning — create a warning-level alert
+      console.log(`Anomaly detected by Isolation Forest for ${node}`);
+      const hazardType = node.includes('flood') ? 'flood'
+                       : node.includes('fire')  ? 'fire'
+                       : 'earthquake';
+      await createAlertIfNotDuplicate(node, hazardType, 'warning');
     } else {
-      // AI said "normal" — still check thresholds as a safety net
+      // Both AI and anomaly detector said normal — run threshold as final safety net
       const detected = detectHazardFromThresholds(node, req.body);
       if (detected) {
-        console.log(`AI said normal, but thresholds triggered for ${node} — creating alert`);
+        console.log(`AI said normal, thresholds triggered for ${node}`);
         await createAlertIfNotDuplicate(node, detected.hazard, detected.severity);
       }
     }
 
   } catch (err) {
-    // AI server is down or timed out — use threshold fallback
-    console.warn(`AI classifier unavailable (${err.message}), using threshold fallback`);
-
+    // AI unavailable — use threshold fallback
+    console.warn(`AI unavailable (${err.message}), using threshold fallback`);
     const detected = detectHazardFromThresholds(node, req.body);
     if (detected) {
       try {
         await createAlertIfNotDuplicate(node, detected.hazard, detected.severity);
       } catch (dbErr) {
-        console.error('Fallback alert insert error:', dbErr.message);
+        console.error('Fallback alert error:', dbErr.message);
       }
     }
   }
 });
 
-// Get sensor history for charts (last 20 readings)
+// ---------------------------------------------------------------------------
+// Sensor history for charts (last 60 readings)
+// ---------------------------------------------------------------------------
 app.get('/api/readings/history', async (req, res) => {
-  const sql = `SELECT * FROM sensor_readings 
-    ORDER BY created_at DESC LIMIT 60`;
   try {
-    const [results] = await db.query(sql);
+    const [results] = await db.query(
+      `SELECT * FROM sensor_readings ORDER BY created_at DESC LIMIT 60`
+    );
     res.json(results.reverse());
   } catch (err) {
     return res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
-// Create a new alert manually - Admin only
+// ---------------------------------------------------------------------------
+// Alerts
+// ---------------------------------------------------------------------------
 app.post('/api/alerts', adminAuth, async (req, res) => {
   const { node, hazard_type, severity } = req.body;
-  const sql = `INSERT INTO alerts 
-    (node_id, hazard_type, severity, status) 
-    VALUES (?, ?, ?, 'pending')`;
   try {
-    const [result] = await db.query(sql, [node, hazard_type, severity]);
-    console.log('Alert created, ID:', result.insertId);
+    const [result] = await db.query(
+      `INSERT INTO alerts (node_id, hazard_type, severity, status) VALUES (?, ?, ?, 'active')`,
+      [node, hazard_type, severity]
+    );
     res.json({ status: 'ok', id: result.insertId });
   } catch (err) {
-    console.error('Alert insert error:', err.message);
     return res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
-// Get all alerts
 app.get('/api/alerts', async (req, res) => {
   try {
     const [results] = await db.query('SELECT * FROM alerts ORDER BY created_at DESC');
@@ -259,10 +258,9 @@ app.get('/api/alerts', async (req, res) => {
   }
 });
 
-// Update alert status (approve or dismiss) - Admin only
 app.patch('/api/alerts/:id', adminAuth, async (req, res) => {
   const { status } = req.body;
-  const { id } = req.params;
+  const { id }     = req.params;
   try {
     await db.query('UPDATE alerts SET status = ? WHERE id = ?', [status, id]);
     res.json({ status: 'ok', message: `Alert ${id} updated to ${status}` });
@@ -271,14 +269,14 @@ app.patch('/api/alerts/:id', adminAuth, async (req, res) => {
   }
 });
 
-// Dashboard — latest reading + active alerts
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
 app.get('/api/dashboard', async (req, res) => {
-  const latestReading = `SELECT * FROM sensor_readings ORDER BY created_at DESC LIMIT 1`;
-  const activeAlerts = `SELECT * FROM alerts WHERE status = 'active' ORDER BY created_at DESC`;
   try {
     const [[readings], [alerts]] = await Promise.all([
-      db.query(latestReading),
-      db.query(activeAlerts),
+      db.query(`SELECT * FROM sensor_readings ORDER BY created_at DESC LIMIT 1`),
+      db.query(`SELECT * FROM alerts WHERE status = 'active' ORDER BY created_at DESC`),
     ]);
     res.json({
       latest_reading: readings[0] || null,
@@ -291,38 +289,25 @@ app.get('/api/dashboard', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Resident hazard reports (with optional photo)
+// Resident reports
 // ---------------------------------------------------------------------------
-
-// Submit a new report
 app.post('/api/reports', upload.single('photo'), async (req, res) => {
   const { hazard_type, location, description, source } = req.body;
-
   if (!hazard_type || !location) {
     return res.status(400).json({ status: 'error', message: 'hazard_type and location are required' });
   }
-
   const photo_url = req.file ? `/uploads/${req.file.filename}` : null;
-
-  const sql = `INSERT INTO reports (hazard_type, location, description, photo_url, source)
-               VALUES (?, ?, ?, ?, ?)`;
   try {
-    const [result] = await db.query(sql, [
-      hazard_type,
-      location,
-      description || null,
-      photo_url,
-      source || 'resident_report',
-    ]);
-    console.log('Report created, ID:', result.insertId);
+    const [result] = await db.query(
+      `INSERT INTO reports (hazard_type, location, description, photo_url, source) VALUES (?, ?, ?, ?, ?)`,
+      [hazard_type, location, description || null, photo_url, source || 'resident_report']
+    );
     res.status(201).json({ status: 'ok', id: result.insertId, photo_url });
   } catch (err) {
-    console.error('Report insert error:', err.message);
     return res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
-// Get all reports
 app.get('/api/reports', async (req, res) => {
   try {
     const [results] = await db.query('SELECT * FROM reports ORDER BY created_at DESC');
@@ -332,10 +317,9 @@ app.get('/api/reports', async (req, res) => {
   }
 });
 
-// Update report status
 app.patch('/api/reports/:id', async (req, res) => {
   const { status } = req.body;
-  const { id } = req.params;
+  const { id }     = req.params;
   try {
     await db.query('UPDATE reports SET status = ? WHERE id = ?', [status, id]);
     res.json({ status: 'ok', message: `Report ${id} updated to ${status}` });
@@ -343,101 +327,74 @@ app.patch('/api/reports/:id', async (req, res) => {
     return res.status(500).json({ status: 'error', message: err.message });
   }
 });
-// ---------------------------------------------------------------------------
-// NODE PROFILES — add to index.js before app.listen()
-// Allows admin to label fire nodes with owner name and address
-// ---------------------------------------------------------------------------
 
-// GET /api/node-profiles — get all registered node profiles
+// ---------------------------------------------------------------------------
+// Node profiles
+// ---------------------------------------------------------------------------
 app.get('/api/node-profiles', adminAuth, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      'SELECT * FROM node_profiles ORDER BY created_at DESC'
-    );
+    const [rows] = await db.query('SELECT * FROM node_profiles ORDER BY created_at DESC');
     res.json(rows);
   } catch (err) {
-    console.error('Node profiles fetch error:', err.message);
     res.status(500).json({ error: 'Server error.' });
   }
 });
 
-// POST /api/node-profiles — register or update a fire node profile
 app.post('/api/node-profiles', adminAuth, async (req, res) => {
   const { node_id, owner_name, address, node_type } = req.body;
   if (!node_id || !owner_name || !address) {
     return res.status(400).json({ error: 'node_id, owner_name, and address are required.' });
   }
   try {
-    // Upsert — update if exists, insert if not
-    await db.query(`
-      INSERT INTO node_profiles (node_id, owner_name, address, node_type)
-      VALUES (?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        owner_name = VALUES(owner_name),
-        address    = VALUES(address),
-        node_type  = VALUES(node_type)
-    `, [node_id, owner_name, address, node_type || 'fire']);
+    await db.query(
+      `INSERT INTO node_profiles (node_id, owner_name, address, node_type) VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE owner_name = VALUES(owner_name), address = VALUES(address), node_type = VALUES(node_type)`,
+      [node_id, owner_name, address, node_type || 'fire']
+    );
     res.status(201).json({ message: 'Node profile saved.' });
   } catch (err) {
-    console.error('Node profile save error:', err.message);
     res.status(500).json({ error: 'Server error.' });
   }
 });
 
-// DELETE /api/node-profiles/:node_id — remove a node profile
 app.delete('/api/node-profiles/:node_id', adminAuth, async (req, res) => {
   try {
     await db.query('DELETE FROM node_profiles WHERE node_id = ?', [req.params.node_id]);
     res.json({ message: 'Node profile deleted.' });
   } catch (err) {
-    console.error('Node profile delete error:', err.message);
     res.status(500).json({ error: 'Server error.' });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
 app.get('/api/analytics/summary', adminAuth, async (req, res) => {
   try {
     const [monthly] = await db.query(`
       SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, hazard_type, COUNT(*) AS count
-      FROM alerts
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-      GROUP BY month, hazard_type
-      ORDER BY month ASC
-    `);
+      FROM alerts WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY month, hazard_type ORDER BY month ASC`);
     const [totals] = await db.query(`
-      SELECT hazard_type, COUNT(*) AS count
-      FROM alerts
-      GROUP BY hazard_type
-      ORDER BY count DESC
-    `);
+      SELECT hazard_type, COUNT(*) AS count FROM alerts
+      GROUP BY hazard_type ORDER BY count DESC`);
     const [nodeActivity] = await db.query(`
-      SELECT node_id, COUNT(*) AS count
-      FROM alerts
-      GROUP BY node_id
-      ORDER BY count DESC
-      LIMIT 1
-    `);
+      SELECT node_id, COUNT(*) AS count FROM alerts
+      GROUP BY node_id ORDER BY count DESC LIMIT 1`);
     const [statusBreakdown] = await db.query(`
-      SELECT status, COUNT(*) AS count
-      FROM alerts
-      GROUP BY status
-    `);
+      SELECT status, COUNT(*) AS count FROM alerts GROUP BY status`);
     const [peakHours] = await db.query(`
-      SELECT HOUR(created_at) AS hour, COUNT(*) AS count
-      FROM alerts
-      GROUP BY hour
-      ORDER BY count DESC
-      LIMIT 5
-    `);
+      SELECT HOUR(created_at) AS hour, COUNT(*) AS count FROM alerts
+      GROUP BY hour ORDER BY count DESC LIMIT 5`);
     const [dailyTrend] = await db.query(`
-      SELECT DATE(created_at) AS date, COUNT(*) AS count
-      FROM alerts
+      SELECT DATE(created_at) AS date, COUNT(*) AS count FROM alerts
       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-      GROUP BY date
-      ORDER BY date ASC
-    `);
-    res.json({ monthly, totals, nodeActivity: nodeActivity[0] || null, statusBreakdown, peakHours, dailyTrend });
+      GROUP BY date ORDER BY date ASC`);
+    const [anomalyStats] = await db.query(`
+      SELECT anomaly_severity, COUNT(*) AS count FROM sensor_readings
+      WHERE anomaly_severity IS NOT NULL GROUP BY anomaly_severity`);
+    res.json({ monthly, totals, nodeActivity: nodeActivity[0] || null, statusBreakdown, peakHours, dailyTrend, anomalyStats });
   } catch (err) {
-    console.error('Analytics error:', err.message);
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -446,20 +403,14 @@ app.get('/api/analytics/prediction', adminAuth, async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT hazard_type, DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS count
-      FROM alerts
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
-      GROUP BY hazard_type, month
-      ORDER BY hazard_type, month ASC
-    `);
+      FROM alerts WHERE created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+      GROUP BY hazard_type, month ORDER BY hazard_type, month ASC`);
     const [currentMonth] = await db.query(`
-      SELECT hazard_type, COUNT(*) AS count
-      FROM alerts
+      SELECT hazard_type, COUNT(*) AS count FROM alerts
       WHERE DATE_FORMAT(created_at, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')
-      GROUP BY hazard_type
-    `);
+      GROUP BY hazard_type`);
     res.json({ rows, currentMonth });
   } catch (err) {
-    console.error('Prediction error:', err.message);
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
