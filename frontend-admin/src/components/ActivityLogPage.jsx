@@ -33,7 +33,8 @@ export function ActivityLogPage({ activityLog = [] }) {
   const [search, setSearch] = useState("");
 
   const filtered = activityLog.filter((entry) => {
-    if (filter !== "all" && entry.action !== filter) return false;
+     if (filter !== "all" && entry.action !== filter &&
+        !(filter === "responded" && entry.action === "approved")) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -45,8 +46,8 @@ export function ActivityLogPage({ activityLog = [] }) {
     return true;
   });
 
-  const approvedCount = activityLog.filter((e) => e.action === "approved").length;
-  const declinedCount = activityLog.filter((e) => e.action === "declined").length;
+  const respondedCount = activityLog.filter((e) => e.action === "responded" || e.action === "approved").length;
+  const declinedCount  = activityLog.filter((e) => e.action === "declined").length;
 
   return (
     <div className="space-y-6 h-full">
@@ -63,7 +64,7 @@ export function ActivityLogPage({ activityLog = [] }) {
         </div>
         <div className="flex items-center gap-3">
           <span className="bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-full text-xs font-semibold">
-            {approvedCount} Approved
+            {respondedCount} Responded
           </span>
           <span className="bg-red-50 text-red-500 border border-red-200 px-3 py-1.5 rounded-full text-xs font-semibold">
             {declinedCount} Declined
@@ -89,7 +90,7 @@ export function ActivityLogPage({ activityLog = [] }) {
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
           {[
             { key: "all", label: "All" },
-            { key: "approved", label: "Approved" },
+            { key: "responded", label: "Responded" },
             { key: "declined", label: "Declined" },
           ].map((tab) => (
             <button
@@ -132,7 +133,7 @@ export function ActivityLogPage({ activityLog = [] }) {
             </div>
           ) : (
             filtered.map((entry) => {
-              const isApproved = entry.action === "approved";
+              const isResponded = entry.action === "responded" || entry.action === "approved";
               const HazardIcon = HAZARD_ICONS[entry.hazardType] || Activity;
               const hazardBadge = HAZARD_BADGE[entry.hazardType] || "bg-gray-50 text-gray-600 border-gray-200";
               const severityBadge = SEVERITY_BADGE[entry.severity] || SEVERITY_BADGE.medium;
@@ -145,7 +146,7 @@ export function ActivityLogPage({ activityLog = [] }) {
                 >
                   {/* Icon */}
                   <div>
-                    {isApproved ? (
+                    {isResponded ? (
                       <CheckCircle2 size={20} className="text-green-500" />
                     ) : (
                       <XCircle size={20} className="text-red-400" />
@@ -156,12 +157,12 @@ export function ActivityLogPage({ activityLog = [] }) {
                   <div>
                     <span
                       className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${
-                        isApproved
+                        isResponded
                           ? "bg-green-50 text-green-700 border border-green-200"
                           : "bg-red-50 text-red-500 border border-red-200"
                       }`}
                     >
-                      {isApproved ? "Approved" : "Declined"}
+                      {isResponded ? "Approved" : "Declined"}
                     </span>
                   </div>
 

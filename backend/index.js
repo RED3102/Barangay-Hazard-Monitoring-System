@@ -13,8 +13,6 @@ app.use(express.json());
 const PORT       = process.env.PORT       || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_in_production";
 
-// AI service URL — update this after deploying hazard-ai to Render
-const AI_URL = process.env.AI_URL || "https://YOUR-AI-SERVICE.onrender.com";
 
 // ---------------------------------------------------------------------------
 // Middleware: verify admin JWT
@@ -147,76 +145,48 @@ app.post('/api/readings', async (req, res) => {
   // 2. Respond to ESP32 immediately
   res.json({ status: 'ok', id: result.insertId });
 
-  // 3. Build AI analysis request (classification + anomaly detection)
-  let analyzeUrl  = '';
-  let analyzeBody = {};
+ // 3. Build AI classifier request
+let classifyUrl  = '';
+let classifyBody = {};
 
-  if (node === 'flood_node') {
-    analyzeUrl  = `${AI_URL}/analyze/flood`;
-    analyzeBody = { water, distance };
-  } else if (node === 'fire_node' || node.startsWith('fire_node_')) {
-    analyzeUrl  = `${AI_URL}/analyze/fire`;
-    analyzeBody = { smoke, temperature };
-  } else if (node === 'earthquake_node') {
-    analyzeUrl  = `${AI_URL}/analyze/earthquake`;
-    analyzeBody = { vibration: vib };
-  }
+if (node === 'flood_node') {
+  classifyUrl  = 'https://hazard-ai-production.up.railway.app/classify/flood';
+  classifyBody = { water, distance };
+} else if (node === 'fire_node' || node.startsWith('fire_node_')) {
+  classifyUrl  = 'https://hazard-ai-production.up.railway.app/classify/fire';
+  classifyBody = { smoke, temperature };
+} else if (node === 'earthquake_node') {
+  classifyUrl  = 'https://hazard-ai-production.up.railway.app/classify/earthquake';
+  classifyBody = { vibration: vib };
+}
 
-  if (!analyzeUrl) return;
+if (!classifyUrl) return;
 
-  // 4. Try AI (classification + anomaly detection); fall back to thresholds if unavailable
-  try {
-    const aiRes    = await fetch(analyzeUrl, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(analyzeBody),
-      signal:  AbortSignal.timeout(5000),
-    });
-
-    const aiResult = await aiRes.json();
-    console.log(`AI analysis for ${node}:`, aiResult);
-
-    // Save anomaly score back to the reading row
-    if (result?.insertId && aiResult.score !== undefined) {
-      await db.query(
-        'UPDATE sensor_readings SET anomaly_score = ?, anomaly_severity = ? WHERE id = ?',
-        [aiResult.score, aiResult.severity, result.insertId]
-      ).catch(err => console.warn('Anomaly score save skipped:', err.message));
-    }
-
-    if (aiResult.hazard && aiResult.hazard !== 'normal') {
-      // AI classifier detected a hazard
-      const severity = aiResult.hazard === 'earthquake' ? 'critical' : 'high';
-      await createAlertIfNotDuplicate(node, aiResult.hazard, severity);
-    } else if (aiResult.anomaly && aiResult.severity === 'anomalous') {
-      // Isolation Forest flagged anomaly even though classifier said normal
-      // This is a pre-hazard warning — create a warning-level alert
-      console.log(`Anomaly detected by Isolation Forest for ${node}`);
-      const hazardType = node.includes('flood') ? 'flood'
-                       : node.includes('fire')  ? 'fire'
-                       : 'earthquake';
-      await createAlertIfNotDuplicate(node, hazardType, 'warning');
-    } else {
-      // Both AI and anomaly detector said normal — run threshold as final safety net
-      const detected = detectHazardFromThresholds(node, req.body);
-      if (detected) {
-        console.log(`AI said normal, thresholds triggered for ${node}`);
-        await createAlertIfNotDuplicate(node, detected.hazard, detected.severity);
-      }
-    }
-
-  } catch (err) {
-    // AI unavailable — use threshold fallback
-    console.warn(`AI unavailable (${err.message}), using threshold fallback`);
+// 4. Try AI classifier; fall back to thresholds if unavailable
+try {
+  const aiRes    = await fetch(classifyUrl, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(classifyBody),
+    signal:  AbortSignal.timeout(5000),
+  });
+  const aiResult = await aiRes.json();
+  console.log('AI classification:', aiResult.hazard);
+  if (aiResult.hazard && aiResult.hazard !== 'normal') {
+    const severity = aiResult.hazard === 'earthquake' ? 'critical' : 'high';
+    await createAlertIfNotDuplicate(node, aiResult.hazard, severity);
+  } else {
     const detected = detectHazardFromThresholds(node, req.body);
-    if (detected) {
-      try {
-        await createAlertIfNotDuplicate(node, detected.hazard, detected.severity);
-      } catch (dbErr) {
-        console.error('Fallback alert error:', dbErr.message);
-      }
-    }
+    if (detected) await createAlertIfNotDuplicate(node, detected.hazard, detected.severity);
   }
+} catch (err) {
+  console.warn(`AI unavailable (${err.message}), using threshold fallback`);
+  const detected = detectHazardFromThresholds(node, req.body);
+   if (detected) {
+    try { await createAlertIfNotDuplicate(node, detected.hazard, detected.severity); }
+    catch (dbErr) { console.error('Fallback alert error:', dbErr.message); }
+  }
+}
 });
 
 // ---------------------------------------------------------------------------
