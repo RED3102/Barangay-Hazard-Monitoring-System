@@ -360,10 +360,7 @@ app.get('/api/analytics/summary', adminAuth, async (req, res) => {
       SELECT DATE(created_at) AS date, COUNT(*) AS count FROM alerts
       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
       GROUP BY date ORDER BY date ASC`);
-    const [anomalyStats] = await db.query(`
-      SELECT anomaly_severity, COUNT(*) AS count FROM sensor_readings
-      WHERE anomaly_severity IS NOT NULL GROUP BY anomaly_severity`);
-    res.json({ monthly, totals, nodeActivity: nodeActivity[0] || null, statusBreakdown, peakHours, dailyTrend, anomalyStats });
+    res.json({ monthly, totals, nodeActivity: nodeActivity[0] || null, statusBreakdown, peakHours, dailyTrend });
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
   }
