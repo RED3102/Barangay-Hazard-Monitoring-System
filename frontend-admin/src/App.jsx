@@ -110,7 +110,7 @@ export default function App() {
 
   const isNodeStale = n => !n || (Date.now() - new Date(n.created_at).getTime()) > STALE_MS;
 
-  const floodStatus      = isNodeStale(floodLatest)      ? "Safe" : (floodLatest.water > 30 || floodLatest.distance < 15 ? "Warning" : "Safe");
+  const floodStatus = isNodeStale(floodLatest) ? "Safe" : (floodLatest.water > 30 || floodLatest.distance < 100 ? "Warning" : "Safe");
   const earthquakeVib    = earthquakeLatest?.vibration ?? earthquakeLatest?.vib ?? 0;
   const earthquakeStatus = isNodeStale(earthquakeLatest) ? "Safe" : (earthquakeVib >= 3.0 ? "Critical" : "Safe");
 
@@ -132,9 +132,9 @@ export default function App() {
             <section>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Sensor Data Monitoring</h2>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <SensorChart title="Water Level Sensor" data={waterData.length > 0 ? waterData : [{ time: "now", value: floodLatest?.water || 0 }]} unit="%" color="#2563eb" />
-                <SensorChart title="Fire Sensor" data={smokeData.length > 0 ? smokeData : [{ time: "now", value: 0 }]} unit="ppm" color="#dc2626" />
-                <SensorChart title="Earthquake Sensor" data={vibrationData.length > 0 ? vibrationData : [{ time: "now", value: earthquakeLatest?.vib ?? 0 }]} unit="0–5 scale" color="#f59e0b" />
+                <SensorChart title="Water Level Sensor" data={waterData.length > 0 ? waterData : [{ time: "now", value: floodLatest?.water || 0 }]} unit="%" color="#2563eb" domain={[0, 100]} />
+                <SensorChart title="Fire Sensor" data={smokeData.length > 0 ? smokeData : [{ time: "now", value: 0 }]} unit="ppm" color="#dc2626" domain={[0, 400]} />
+                <SensorChart title="Earthquake Sensor" data={vibrationData.length > 0 ? vibrationData : [{ time: "now", value: earthquakeLatest?.vib ?? 0 }]} unit="0–5 scale" color="#f59e0b" domain={[0, 5]} />
               </div>
             </section>
           </div>

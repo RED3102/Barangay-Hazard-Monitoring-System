@@ -117,4 +117,4 @@ void loop() {
     sendData(smoke, temperature, hazard);
     lastSendTime = now;
   }
-}
+}gt
