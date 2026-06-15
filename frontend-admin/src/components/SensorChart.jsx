@@ -1,13 +1,31 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
 
+const LEGENDS = {
+  "%": [
+    { label: "Dry",     range: "0–15%",  color: "bg-green-400" },
+    { label: "Damp",    range: "15–30%", color: "bg-yellow-400" },
+    { label: "Flooded", range: "30%+",   color: "bg-blue-500"  },
+  ],
+  "ADC": [
+    { label: "Normal",  range: "0–84",   color: "bg-green-400" },
+    { label: "Warning", range: "85–100", color: "bg-yellow-400" },
+    { label: "Alert",   range: "100+",   color: "bg-red-500"   },
+  ],
+  "0–5 scale": [
+    { label: "Stable",   range: "0–1.0", color: "bg-green-400" },
+    { label: "Moderate", range: "1–3.0", color: "bg-yellow-400" },
+    { label: "Seismic",  range: "3.0+",  color: "bg-red-500"   },
+  ],
+};
+
 export function SensorChart({ title, data, unit, color, domain }) {
   const latestValue = data.length > 0 ? data[data.length - 1].value : 0;
-
-  // Show only last 20 readings to keep chart readable
-  const chartData = data.slice(-20);
+  const chartData   = data.slice(-20);
+  const legend      = LEGENDS[unit] || null;
 
   return (
-    <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col h-[300px] transition-colors">
+    <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col transition-colors" style={{ minHeight: '300px' }}>
+      {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{title}</h3>
         <div className="text-right">
@@ -18,7 +36,8 @@ export function SensorChart({ title, data, unit, color, domain }) {
         </div>
       </div>
 
-      <div className="flex-1 w-full min-h-0">
+      {/* Chart */}
+      <div className="flex-1 w-full" style={{ height: '200px' }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             key={chartData.length + "-" + (chartData[chartData.length - 1]?.value ?? 0)}
@@ -52,7 +71,7 @@ export function SensorChart({ title, data, unit, color, domain }) {
               labelStyle={{ color: '#9ca3af', marginBottom: '4px' }}
               formatter={(value) => [
                 `${typeof value === 'number' ? value.toFixed(2) : value} ${unit}`,
-                title
+                title,
               ]}
             />
             <Line
@@ -67,6 +86,19 @@ export function SensorChart({ title, data, unit, color, domain }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Legend */}
+      {legend && (
+        <div className="flex gap-3 mt-3 flex-wrap border-t border-gray-50 dark:border-gray-800 pt-3">
+          {legend.map(r => (
+            <div key={r.label} className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${r.color}`} />
+              <span className="font-semibold text-gray-700 dark:text-gray-300">{r.label}</span>
+              <span>{r.range}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
