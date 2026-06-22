@@ -2,9 +2,9 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tool
 
 const LEGENDS = {
   "%": [
-    { label: "Dry",     range: "0–15%",  color: "bg-green-400" },
-    { label: "Damp",    range: "15–30%", color: "bg-yellow-400" },
-    { label: "Flooded", range: "30%+",   color: "bg-blue-500"  },
+    { label: "Safe",     range: "10–20%",  color: "bg-green-400"  },
+    { label: "Warning",  range: "30–40%",  color: "bg-yellow-400" },
+    { label: "Critical", range: "50–100%", color: "bg-red-500"    },
   ],
   "ADC": [
     { label: "Normal",  range: "0–84",   color: "bg-green-400" },
