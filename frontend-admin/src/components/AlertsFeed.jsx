@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { Bell, Camera, X, Plus, Send, RefreshCw } from "lucide-react";
+import { Bell, Camera, X, Plus, Send, RefreshCw, Check, XCircle } from "lucide-react";
 
 import { API_URL } from "../config";
 
 export function AlertsFeed() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(null);
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [showReportForm, setShowReportForm] = useState(false);
   const [formData, setFormData] = useState({
@@ -31,6 +32,7 @@ export function AlertsFeed() {
       // Transform sensor alerts into notification format
       const alertNotifs = (Array.isArray(alertsData) ? alertsData : []).map((a) => ({
         id: `alert-${a.id}`,
+        rawId: a.id,
         text: `[${a.hazard_type.charAt(0).toUpperCase() + a.hazard_type.slice(1)}] ${a.hazard_type} alert from ${a.node_id}`,
         description: `Severity: ${a.severity} — Status: ${a.status}`,
         time: a.created_at,
@@ -43,6 +45,7 @@ export function AlertsFeed() {
       // Transform resident reports into notification format
       const reportNotifs = (Array.isArray(reportsData) ? reportsData : []).map((r) => ({
         id: `report-${r.id}`,
+        rawId: r.id,
         text: `[${r.hazard_type.charAt(0).toUpperCase() + r.hazard_type.slice(1)}] Resident report — ${r.location}`,
         description: r.description || "No description provided.",
         time: r.created_at,
@@ -94,7 +97,7 @@ export function AlertsFeed() {
       const token = localStorage.getItem("admin_token");
       const res = await fetch(`${API_URL}/api/alerts`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
@@ -112,6 +115,24 @@ export function AlertsFeed() {
       fetchNotifications(); // Refresh immediately
     } catch (err) {
       console.error("Failed to submit report:", err);
+    }
+  };
+
+  // Mark a resident report as reviewed or dismissed
+  const updateReportStatus = async (rawId, newStatus) => {
+    setUpdating(rawId);
+    try {
+      const res = await fetch(`${API_URL}/api/reports/${rawId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      await fetchNotifications();
+    } catch (err) {
+      console.error("Failed to update report status:", err);
+    } finally {
+      setUpdating(null);
     }
   };
 
@@ -249,64 +270,89 @@ export function AlertsFeed() {
             <p className="text-sm">No notifications yet</p>
           </div>
         ) : (
-          notifications.map((notif) => (
-            <div key={notif.id} className="flex gap-4 p-4 border border-gray-50 bg-white hover:bg-gray-50 hover:border-gray-100 rounded-xl transition-colors shadow-sm">
-              <div className={`w-2.5 h-2.5 mt-1.5 rounded-full flex-shrink-0 ${
-                notif.type === "warning" ? "bg-yellow-500" :
-                notif.type === "info" ? "bg-blue-500" : "bg-emerald-500"
-              }`} />
-              <div className="w-full">
-                <div className="flex justify-between items-start w-full">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-bold text-gray-900">{notif.text}</p>
-                    {notif.source === "resident" && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-100">
-                        Report
-                      </span>
-                    )}
-                    {notif.source === "sensor" && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-600 border border-cyan-100">
-                        Sensor
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-400 font-medium whitespace-nowrap ml-2">{timeAgo(notif.time)}</span>
-                </div>
-                {notif.description && (
-                  <p className="text-sm text-gray-600 mt-1 leading-relaxed">{notif.description}</p>
-                )}
-                <div className="flex items-center gap-2 mt-1.5">
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                    notif.status === "pending"
-                      ? "bg-yellow-50 text-yellow-600 border border-yellow-100"
-                      : notif.status === "verified" || notif.status === "reviewed"
-                        ? "bg-green-50 text-green-600 border border-green-100"
-                        : "bg-gray-100 text-gray-400 border border-gray-200"
-                  }`}>
-                    {notif.status}
-                  </span>
-                </div>
-                {notif.image && (
-                  <div className="mt-3 relative group inline-block">
-                    <img
-                      src={notif.image}
-                      alt="Evidence"
-                      onClick={() => setLightboxSrc(notif.image)}
-                      className="w-16 h-12 object-cover rounded-lg border border-gray-200 cursor-pointer"
-                    />
-                    <img
-                      src={notif.image}
-                      alt=""
-                      className="absolute bottom-14 left-0 w-52 h-36 object-cover rounded-xl border border-gray-200 shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-10"
-                    />
-                    <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 w-fit px-2.5 py-1 rounded-md border border-blue-100">
-                      <Camera size={13} /> Photo evidence attached
+          notifications.map((notif) => {
+            const isPendingReport = notif.source === "resident" && notif.status === "pending";
+            const isUpdating = updating === notif.rawId;
+
+            return (
+              <div key={notif.id} className="flex gap-4 p-4 border border-gray-50 bg-white hover:bg-gray-50 hover:border-gray-100 rounded-xl transition-colors shadow-sm">
+                <div className={`w-2.5 h-2.5 mt-1.5 rounded-full flex-shrink-0 ${
+                  notif.type === "warning" ? "bg-yellow-500" :
+                  notif.type === "info" ? "bg-blue-500" : "bg-emerald-500"
+                }`} />
+                <div className="w-full">
+                  <div className="flex justify-between items-start w-full">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-gray-900">{notif.text}</p>
+                      {notif.source === "resident" && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-100">
+                          Report
+                        </span>
+                      )}
+                      {notif.source === "sensor" && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-600 border border-cyan-100">
+                          Sensor
+                        </span>
+                      )}
                     </div>
+                    <span className="text-xs text-gray-400 font-medium whitespace-nowrap ml-2">{timeAgo(notif.time)}</span>
                   </div>
-                )}
+                  {notif.description && (
+                    <p className="text-sm text-gray-600 mt-1 leading-relaxed">{notif.description}</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                      notif.status === "pending"
+                        ? "bg-yellow-50 text-yellow-600 border border-yellow-100"
+                        : notif.status === "verified" || notif.status === "reviewed"
+                          ? "bg-green-50 text-green-600 border border-green-100"
+                          : "bg-gray-100 text-gray-400 border border-gray-200"
+                    }`}>
+                      {notif.status}
+                    </span>
+                  </div>
+                  {notif.image && (
+                    <div className="mt-3 relative group inline-block">
+                      <img
+                        src={notif.image}
+                        alt="Evidence"
+                        onClick={() => setLightboxSrc(notif.image)}
+                        className="w-16 h-12 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                      />
+                      <img
+                        src={notif.image}
+                        alt=""
+                        className="absolute bottom-14 left-0 w-52 h-36 object-cover rounded-xl border border-gray-200 shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-10"
+                      />
+                      <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 w-fit px-2.5 py-1 rounded-md border border-blue-100">
+                        <Camera size={13} /> Photo evidence attached
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action buttons — resident reports only, while pending */}
+                  {isPendingReport && (
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => updateReportStatus(notif.rawId, "reviewed")}
+                        disabled={isUpdating}
+                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                      >
+                        <Check size={13} /> Mark as Reviewed
+                      </button>
+                      <button
+                        onClick={() => updateReportStatus(notif.rawId, "dismissed")}
+                        disabled={isUpdating}
+                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                      >
+                        <XCircle size={13} /> Dismiss
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
