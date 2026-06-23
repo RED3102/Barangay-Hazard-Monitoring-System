@@ -14,8 +14,8 @@
 //   "fire_node_blk4_lot12" — Block 4, Lot 12
 // -----------------------------------
  
-#define WIFI_SSID           "Chua_Deco_IoT"
-#define WIFI_PASSWORD       "C@rd1nMig0"
+#define WIFI_SSID           "red"
+#define WIFI_PASSWORD       "123red456"
 #define SERVER_URL          "https://hazard-backend-8dtj.onrender.com/api/readings"
  
 #define MQ2_PIN             35
@@ -117,4 +117,4 @@ void loop() {
     sendData(smoke, temperature, hazard);
     lastSendTime = now;
   }
-}gt
+}

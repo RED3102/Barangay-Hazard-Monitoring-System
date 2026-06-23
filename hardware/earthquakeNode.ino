@@ -5,9 +5,11 @@
 #include <MPU6050.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
- 
-#define WIFI_SSID           "Chua_Deco"
-#define WIFI_PASSWORD       "C@rd1nMig0"
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+
+#define WIFI_SSID           "red"
+#define WIFI_PASSWORD       "123red456"
 #define SERVER_URL          "https://hazard-backend-8dtj.onrender.com/api/readings"
  
 #define CHECK_WINDOW_MS     500
@@ -62,7 +64,7 @@ float readVibration() {
   }
   float delta = (float)maxMag - baselineVib;
   if (delta < 3000) return 0.0;
-  float vib = (delta / 40000.0) * 5.0;
+  float vib = (delta / 100000.0) * 5.0;
   if (vib > 5.0) vib = 5.0;
   return vib;
 }
@@ -93,6 +95,7 @@ void sendData(float vib, String hazard) {
 }
  
 void setup() {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // disable brownout — first line
   Serial.begin(115200);
   Wire.begin(21, 22);
   mpu.initialize();
@@ -109,7 +112,7 @@ void setup() {
  
 void loop() {
   float vib     = readVibration();
-  String hazard = (vib >= 3.0) ? "earthquake" : "none";
+  String hazard = (vib >= 3.75) ? "earthquake" : "none";
  
   Serial.print("VIB: ");
   Serial.println(vib, 2);
